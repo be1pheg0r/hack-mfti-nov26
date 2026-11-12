@@ -1,0 +1,14 @@
+dataset_dir: .data/trudvsem_mini
+extra_datasets:
+  medium: .data/trudvsem_medium
+assets_dir: web/dataset_viewer
+server:
+  host: 127.0.0.1
+  port: 8787
+  allowed_hosts: []
+  allow_private_bind: false
+hydra:
+  run:
+    dir: .data/dataset_viewer/runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

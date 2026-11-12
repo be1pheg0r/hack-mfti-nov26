@@ -1,0 +1,30 @@
+[project]
+name = "mfti-hack"
+version = "0.1.0"
+description = "Resume and vacancy matching hackathon project"
+requires-python = ">=3.12"
+dependencies = ["hydra-core>=1.3,<2"]
+
+[dependency-groups]
+dev = [
+    "isort>=6,<7",
+    "pre-commit>=4,<5",
+    "pytest>=8,<10",
+    "ruff>=0.11,<1",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [".venv", ".docs", ".data"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip = [".venv", ".docs", ".data"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

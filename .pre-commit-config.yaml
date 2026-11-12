@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (autofix)
+        entry: uv run --locked --no-sync ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: isort
+        name: isort (autofix)
+        entry: uv run --locked --no-sync isort
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --locked --no-sync ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: pytest
+        name: pytest
+        entry: uv run --locked --no-sync pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
