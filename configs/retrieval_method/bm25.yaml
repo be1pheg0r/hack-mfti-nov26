@@ -1,0 +1,6 @@
+# Single channel: BM25Plus with the editable Russian stopword list.
+defaults:
+  - /bm25_skills_index@config
+  - _self_
+_target_: vrscore.indexes.BM25SkillIndex
+_convert_: all

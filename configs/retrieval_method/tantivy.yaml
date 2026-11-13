@@ -1,0 +1,6 @@
+defaults:
+  - /exact_skills_index@config
+  - /tantivy_exact_skills_index@config
+  - _self_
+_target_: vrscore.indexes.TantivyExactSkillIndex
+_convert_: all

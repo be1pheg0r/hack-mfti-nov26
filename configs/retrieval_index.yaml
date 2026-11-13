@@ -1,0 +1,5 @@
+# Selected using exploratory nDCG@5 on the local AI-labelled corpus.
+# This is a retrieval signal, not an eligibility decision or final fit score.
+defaults:
+  - retrieval_method: bm25
+  - _self_

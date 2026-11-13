@@ -1,0 +1,5 @@
+defaults:
+  - /exact_skills_index@config
+  - _self_
+_target_: vrscore.indexes.ExactSkillIndex
+_convert_: all
