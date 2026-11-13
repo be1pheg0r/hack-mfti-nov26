@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import logging
+import re
 from pathlib import Path
 from threading import Lock
 
@@ -9,6 +11,7 @@ from omegaconf import OmegaConf
 
 from vrscore.documents.docx import DocxReader
 from vrscore.feature_extraction.vacancy import FeatureVocabulary
+from vrscore.gates import evaluate_first_gate
 from vrscore.llm import ExtractionPrompts
 
 from .extraction import (
@@ -93,6 +96,78 @@ def load_case_documents(
     return vacancies, resumes
 
 
+def normalize_gate_evidence(entities):
+    """Reject numeric claims lacking cited duration; correct explicit degrees."""
+    normalized = []
+    for original in entities:
+        entity = dict(original)
+        quote = entity["evidence"].casefold()
+        if entity.get("category") == "experience":
+            try:
+                value = float(entity["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            numbers = re.findall(
+                r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(?:х\s*)?"
+                r"(?:[–—-]\s*\d+\s*)?(?:лет|год(?:а|ов)?)\b",
+                quote,
+            )
+            explicit_zero = value == 0 and bool(
+                re.search(r"без опыта|опыт (?:работы )?не требуется", quote)
+            )
+            if not explicit_zero and value not in [
+                float(number.replace(",", ".")) for number in numbers
+            ]:
+                continue
+        if entity.get("category") == "education" and re.search(
+            r"кандидат[а-яё]*\s+(?:[а-яё-]+\s+){0,3}наук", quote
+        ):
+            entity["original_value"] = entity.get("value")
+            entity["value"] = "candidate_of_sciences"
+            entity["display_value"] = "Кандидат наук"
+        normalized.append(entity)
+    return normalized
+
+
+def load_extra_vacancies(path):
+    """Load preprocessed vacancies and verify their literal source evidence."""
+    if not path:
+        return []
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"Vacancy corpus not found: {path}")
+    records = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        raise ValueError("Vacancy corpus must be a list")
+    identifiers = set()
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or record.get("kind") != "vacancy"
+            or not isinstance(record.get("id"), str)
+            or not record["id"]
+            or record["id"] in identifiers
+            or not isinstance(record.get("title"), str)
+            or not isinstance(record.get("text"), str)
+            or not isinstance(record.get("entities"), list)
+        ):
+            raise ValueError("Invalid vacancy corpus record")
+        identifiers.add(record["id"])
+        for entity in record["entities"]:
+            if not isinstance(entity, dict):
+                raise ValueError("Invalid vacancy evidence")
+            start, end = entity.get("start"), entity.get("end")
+            if (
+                type(start) is not int
+                or type(end) is not int
+                or not 0 <= start < end <= len(record["text"])
+                or record["text"][start:end] != entity.get("evidence")
+            ):
+                raise ValueError("Invalid vacancy evidence offsets or text")
+        record["entities"] = normalize_gate_evidence(record["entities"])
+    return records
+
+
 class DemoService:
     """Cache validated extractions in memory for the approved public case files."""
 
@@ -107,6 +182,7 @@ class DemoService:
         vacancy_template=None,
         parsed_dir=None,
         cache_dir=None,
+        extra_vacancies_path=None,
     ):
         self.provider = provider
         project = Path(__file__).resolve().parents[2]
@@ -157,12 +233,16 @@ class DemoService:
         self.vacancies, self.resumes = load_case_documents(
             root, documents=self.documents
         )
+        self.extra_vacancies = load_extra_vacancies(extra_vacancies_path)
+        if {v["id"] for v in self.extra_vacancies} & {v["id"] for v in self.vacancies}:
+            raise ValueError("Duplicate vacancy ID across corpora")
         self.parsed_dir = (
             Path(parsed_dir) if parsed_dir else project / "public_data" / "parsed"
         )
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.parsed = self._load_parsed()
         self.cache = dict(self.parsed)
+        self.vacancy_failures = set()
         self.lock = Lock()
 
     def cache_key(self, document, kind):
@@ -244,6 +324,16 @@ class DemoService:
             self._save_result(result, self.cache_dir)
         return result
 
+    def _available_vacancy(self, document):
+        """Keep other vacancies available if this one cannot be extracted."""
+        if document["id"] not in self.vacancy_failures:
+            try:
+                return self._cached_extraction(document, "vacancy")
+            except Exception as error:
+                logging.warning("Vacancy extraction failed (%s)", type(error).__name__)
+                self.vacancy_failures.add(document["id"])
+        return {"kind": "vacancy", "entities": [], "extraction_error": True}
+
     @staticmethod
     def _save_result(result, directory):
         directory.mkdir(parents=True, exist_ok=True)
@@ -261,13 +351,14 @@ class DemoService:
                 {
                     **item,
                     **(
-                        self._cached_extraction(item, "vacancy")
+                        self._available_vacancy(item)
                         if self.provider
                         else self.cache.get(item["id"], {})
                     ),
                 }
                 for item in self.vacancies
             ]
+            vacancies.extend(self.extra_vacancies)
         return {
             "vacancies": vacancies,
             "resumes": self.resumes,
@@ -377,6 +468,41 @@ class DemoService:
                 self._save_result(result, self.parsed_dir)
                 results["vacancies" if kind == "vacancy" else "resumes"].append(result)
         return results
+
+    def gate(self, resume_id):
+        """Evaluate each vacancy against one resume without inventing a ranking."""
+        resume = next((r for r in self.resumes if r["id"] == resume_id), None)
+        if resume is None:
+            raise ValueError("Unknown resume")
+        with self.lock:
+            resume_features = self._cached_extraction(resume, "resume")
+            vacancies = []
+            for vacancy in self.vacancies:
+                features = self._available_vacancy(vacancy)
+                decision = evaluate_first_gate(features, resume_features)
+                if features.get("extraction_error"):
+                    decision["decisions"][0]["explanation"] = (
+                        "Не удалось извлечь требования вакансии; проверка невозможна."
+                    )
+                vacancies.append(
+                    {
+                        "id": vacancy["id"],
+                        "title": vacancy["title"],
+                        "source_url": vacancy.get("source_url"),
+                        "gate": decision,
+                        "extraction_error": bool(features.get("extraction_error")),
+                    }
+                )
+            vacancies.extend(
+                {
+                    "id": vacancy["id"],
+                    "title": vacancy["title"],
+                    "source_url": vacancy.get("source_url"),
+                    "gate": evaluate_first_gate(vacancy, resume_features),
+                }
+                for vacancy in self.extra_vacancies
+            )
+            return {"resume_id": resume_id, "vacancies": vacancies}
 
     def analyze(self, vacancy_id, resume_id=None):
         """Reuse results for unchanged documents and extraction configuration."""

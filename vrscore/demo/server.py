@@ -110,7 +110,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.permitted():
             return self.respond(403, {"error": "Forbidden host or origin"})
-        if urlsplit(self.path).path != "/api/demo/analyze":
+        path = urlsplit(self.path).path
+        if path not in {"/api/demo/analyze", "/api/demo/gate"}:
             return self.respond(404, {"error": "Not found"})
         if not self.authenticated():
             return self.respond(401, {"error": "Требуется токен"})
@@ -121,14 +122,23 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 4096:
                 raise ValueError("Invalid body size")
             data = json.loads(self.rfile.read(length))
-            if not isinstance(data, dict) or not isinstance(
+            if path == "/api/demo/gate":
+                if (
+                    not isinstance(data, dict)
+                    or not isinstance(data.get("resume_id"), str)
+                    or data["resume_id"] not in {r["id"] for r in self.service.resumes}
+                ):
+                    raise ValueError("Unknown resume")
+            elif not isinstance(data, dict) or not isinstance(
                 data.get("vacancy_id"), str
             ):
                 raise ValueError("Invalid request")
             resume_id = data.get("resume_id")
             if resume_id is not None and not isinstance(resume_id, str):
                 raise ValueError("Invalid resume")
-            if data["vacancy_id"] not in {v["id"] for v in self.service.vacancies}:
+            if path == "/api/demo/analyze" and data["vacancy_id"] not in {
+                v["id"] for v in self.service.vacancies
+            }:
                 raise ValueError("Unknown vacancy")
             if resume_id is not None and resume_id not in {
                 r["id"] for r in self.service.resumes
@@ -137,7 +147,11 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
             return self.respond(400, {"error": "Некорректный запрос."})
         try:
-            result = self.service.analyze(data["vacancy_id"], resume_id=resume_id)
+            result = (
+                self.service.gate(resume_id)
+                if path == "/api/demo/gate"
+                else self.service.analyze(data["vacancy_id"], resume_id=resume_id)
+            )
         except Exception as error:
             logging.error("Demo extraction failed (%s)", type(error).__name__)
             return self.respond(
@@ -200,6 +214,7 @@ def main(config: DictConfig):
                         config.feature_extraction.postprocessing, resolve=True
                     ),
                     cache_dir=config.server.cache_dir,
+                    extra_vacancies_path=config.server.extra_vacancies_path,
                     vacancy_template=OmegaConf.to_container(
                         config.feature_extraction.vacancy_template, resolve=True
                     ),
