@@ -93,7 +93,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/demo":
             if not self.authenticated():
                 return self.respond(401, {"error": "Требуется токен"})
-            return self.respond(200, self.service.catalog())
+            try:
+                result = self.service.catalog()
+            except Exception as error:
+                logging.error(
+                    "Demo catalog extraction failed (%s)", type(error).__name__
+                )
+                return self.respond(502, {"error": "Не удалось обработать вакансии."})
+            return self.respond(200, result)
         self.respond(404, {"error": "Not found"})
 
     def do_POST(self):
@@ -187,6 +194,7 @@ def main(config: DictConfig):
                     postprocessing=OmegaConf.to_container(
                         config.feature_extraction.postprocessing, resolve=True
                     ),
+                    cache_dir=config.server.cache_dir,
                 ),
                 token=token,
                 port=config.server.port,

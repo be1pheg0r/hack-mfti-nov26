@@ -209,6 +209,53 @@ def test_every_approved_case_document_can_be_parsed_to_disk(tmp_path):
     assert all("entities" in item for item in catalog["vacancies"])
 
 
+def test_matching_saved_results_are_reused_and_config_changes_invalidate(tmp_path):
+    from vrscore.demo.service import DemoService
+
+    class Provider:
+        def __init__(self):
+            self.calls = 0
+
+        def structured(self, messages, output_type, *, public_data):
+            self.calls += 1
+            return output_type.model_validate({"entities": []})
+
+    provider = Provider()
+    service = DemoService(provider, parsed_dir=tmp_path)
+    service.extract_all()
+    assert provider.calls == 7
+    restarted = DemoService(provider, parsed_dir=tmp_path)
+    restarted.catalog()
+    restarted.analyze("frontend", resume_id="r1")
+    restarted.analyze("frontend", resume_id="r2")
+    assert provider.calls == 7
+    restarted.resumes[0]["text"] += " changed"
+    restarted.analyze("frontend", resume_id="r1")
+    assert provider.calls == 8
+    changed = dict(restarted.labels, hard_skill="Changed label")
+    reconfigured = DemoService(provider, parsed_dir=tmp_path, labels=changed)
+    reconfigured.analyze("frontend", resume_id="r1")
+    assert provider.calls == 12
+
+    from pydantic import BaseModel
+
+    class Config(BaseModel):
+        model: str
+
+    provider.config = Config(model="first")
+    runtime = DemoService(provider, parsed_dir=tmp_path, cache_dir=tmp_path / "runtime")
+    runtime.catalog()
+    runtime.analyze("frontend")
+    assert provider.calls == 19
+    again = DemoService(provider, parsed_dir=tmp_path, cache_dir=tmp_path / "runtime")
+    again.catalog()
+    again.analyze("frontend")
+    assert provider.calls == 19
+    provider.config.model = "second"
+    again.analyze("frontend")
+    assert provider.calls == 23
+
+
 def test_experience_is_summed_with_all_source_references():
     from vrscore.demo.service import DemoService
 
