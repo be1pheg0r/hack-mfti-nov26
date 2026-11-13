@@ -8,7 +8,7 @@ import pytest
 from vrscore.demo.service import DemoService
 
 ROOT = Path(__file__).resolve().parents[1]
-GT_DIR = ROOT / ".data" / "mfti_matching_gt"
+GT_DIR = ROOT / ".data" / "private_bench_archive" / "mfti_matching_gt_synthetic_v1"
 
 
 def _service(gt_dir=GT_DIR):

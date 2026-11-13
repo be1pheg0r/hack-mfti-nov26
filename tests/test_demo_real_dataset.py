@@ -196,3 +196,29 @@ def test_sanitized_resume_ids_work_with_reference_and_current_cache_keys(
     reference = service.reference_order("real_r5")
     assert len(reference["ranked"]) == 20
     assert reference["ranked"][0]["vacancy_id"] == "fixture_v0"
+
+
+def test_live_private_reference_matches_every_real_resume():
+    """When installed, the actual reference must join all approved documents."""
+    from pathlib import Path
+
+    from vrscore.demo.service import DemoService
+
+    root = Path(__file__).resolve().parents[1] / ".data"
+    resumes, reference, vacancies = (
+        root / "mfti_real_work",
+        root / "mfti_matching_gt",
+        root / "mfti_demo/vacancies.json",
+    )
+    if not all(p.exists() for p in (resumes, reference, vacancies)):
+        pytest.skip("Private benchmark corpus is not installed")
+    service = DemoService(
+        None,
+        real_resumes_path=resumes,
+        matching_gt_path=reference,
+        extra_vacancies_path=vacancies,
+    )
+    for resume in service.resumes:
+        order = service.reference_order(resume["id"])
+        assert len(order["ranked"]) == 20
+        assert len(order["unannotated"]) == 7
