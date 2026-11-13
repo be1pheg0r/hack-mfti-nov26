@@ -1,11 +1,56 @@
 """Config-to-provider and evidence integration for demo extraction."""
 
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 from pydantic import ValidationError
+
+
+@pytest.fixture(scope="module")
+def _approved_case_data():
+    from vrscore.demo.service import load_case_documents
+
+    raw_dir = Path(__file__).resolve().parents[1] / "public_data" / "raw"
+    documents = {}
+    vacancies, resumes = load_case_documents(raw_dir, documents=documents)
+    assert (len(vacancies), len(resumes), len(documents)) == (3, 4, 7)
+    return vacancies, resumes, documents
+
+
+@pytest.fixture(autouse=True)
+def _reuse_approved_case_data(monkeypatch, _approved_case_data):
+    import vrscore.demo.service as demo_service
+
+    vacancies, resumes, cached_documents = _approved_case_data
+
+    def load_cached_case_documents(_directory, *, documents=None):
+        if documents is not None:
+            documents.update(deepcopy(cached_documents))
+        return deepcopy(vacancies), deepcopy(resumes)
+
+    monkeypatch.setattr(demo_service, "load_case_documents", load_cached_case_documents)
+
+
+def test_missing_vacancy_fields_are_defaulted_after_extraction(tmp_path):
+    from vrscore.demo.service import DemoService
+
+    class Provider:
+        def structured(self, messages, output_type, *, public_data):
+            return output_type.model_validate(
+                {name: [] for name in output_type.model_fields}
+            )
+
+    service = DemoService(Provider(), parsed_dir=tmp_path)
+    result = service.extract_document(service.vacancies[0], kind="vacancy")
+    defaults = {e["category"]: e for e in result["entities"]}
+    assert defaults["experience"]["value"] == 0
+    assert defaults["work_format"]["value"] == "on_site"
+    assert defaults["salary_max"]["value"] == 1000000
+    assert defaults["work_format"]["defaulted"] is True
+    assert not defaults["work_format"].get("evidence")
 
 
 def test_configured_resume_extraction_schema_and_evidence():
@@ -188,7 +233,11 @@ def test_vacancy_template_assigns_importance_without_model_field(tmp_path):
 
     service = DemoService(Provider(), parsed_dir=tmp_path)
     result = service.extract_document(service.vacancies[0], kind="vacancy")
-    assert [(e["category"], e["importance"]) for e in result["entities"]] == [
+    assert [
+        (e["category"], e["importance"])
+        for e in result["entities"]
+        if not e.get("defaulted")
+    ] == [
         ("hard_skill", "good2have"),
         ("hard_skill", "honestly_desired"),
     ]
@@ -215,7 +264,8 @@ def test_every_approved_case_document_can_be_parsed_to_disk(tmp_path):
     for item in [*results["vacancies"], *results["resumes"]]:
         saved = json.loads((tmp_path / f"{item['id']}.json").read_text())
         assert saved["document_id"] == item["document_id"]
-        assert saved["entities"] == []
+        assert all(e.get("defaulted") for e in saved["entities"])
+        assert len(saved["entities"]) == (7 if item["kind"] == "vacancy" else 0)
     catalog = DemoService(EmptyProvider(), parsed_dir=tmp_path).catalog()
     assert all("entities" in item for item in catalog["vacancies"])
 

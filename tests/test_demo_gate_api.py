@@ -21,6 +21,7 @@ def test_demo_gate_uses_cached_extractions_and_never_ranks(monkeypatch):
             "experience": 1,
             "education": "bachelor",
             "work_format": "on_site",
+            "work_schedule": "full_time",
         }
         return {
             "id": document["id"],

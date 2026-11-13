@@ -5,9 +5,30 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hydra import compose, initialize_config_dir
 
-def test_gate_cli_uses_actual_parsed_json_and_config_overrides(tmp_path):
+from vrscore.gate_cli import main
+
+
+def test_gate_cli_uses_actual_parsed_json_and_config_overrides(tmp_path, capsys):
     root = Path(__file__).resolve().parents[1]
+    with initialize_config_dir(version_base=None, config_dir=str(root / "configs")):
+        config = compose(
+            config_name="first_gate_cli",
+            overrides=[
+                f"vacancy={root / 'public_data/parsed/accountant.json'}",
+                f"resume={root / 'public_data/parsed/r2.json'}",
+            ],
+        )
+    main.__wrapped__(config)
+    decision = json.loads(capsys.readouterr().out)
+    assert decision["status"] == "unknown"
+    assert [entry["filter"] for entry in decision["decisions"]] == [
+        "experience",
+        "education",
+        "work_format",
+        "work_schedule",
+    ]
     command = [
         sys.executable,
         "-m",
@@ -16,16 +37,7 @@ def test_gate_cli_uses_actual_parsed_json_and_config_overrides(tmp_path):
         "resume=public_data/parsed/r2.json",
         f"hydra.run.dir={tmp_path}",
     ]
-    result = subprocess.run(
-        command, cwd=root, capture_output=True, text=True, check=True
-    )
-    decision = json.loads(result.stdout)
-    assert decision["status"] == "pass"
-    assert [entry["filter"] for entry in decision["decisions"]] == [
-        "experience",
-        "education",
-        "work_format",
-    ]
+
     overridden = subprocess.run(
         command + ["filters.order=[work_format,education,experience]"],
         cwd=root,

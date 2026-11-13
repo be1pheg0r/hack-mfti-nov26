@@ -19,6 +19,7 @@ dev = [
     "jupyterlab>=4,<5",
     "pre-commit>=4,<5",
     "pytest>=8,<10",
+    "pytest-xdist>=3.6,<4",
     "ruff>=0.11,<1",
 ]
 
@@ -38,3 +39,4 @@ skip = [".venv", ".docs", ".data"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-n 4"

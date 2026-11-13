@@ -1,9 +1,18 @@
 filters:
-  order: [experience, education, work_format]
+  order: [experience, education, work_format, work_schedule]
   categories:
     experience: experience
     education: education
     work_format: work_format
+    work_schedule: work_schedule
+vacancy_defaults:
+  experience: 0
+  education: ${..education.levels.0}
+  work_schedule: full_time
+  work_format: on_site
+  employment_type: contract
+  salary_min: 0
+  salary_max: 1000000
 education:
   # Ordered from lowest to highest. A non-negative resume-minus-vacancy
   # rank difference meets the requirement.
@@ -19,3 +28,5 @@ work_format:
     hybrid: [hybrid]
     remote: [hybrid, remote]
     on_site: [on_site]
+work_schedule:
+  values: [full_time, part_time, shift, flexible, rotation]

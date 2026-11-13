@@ -213,6 +213,7 @@ def main(config: DictConfig):
                     postprocessing=OmegaConf.to_container(
                         config.feature_extraction.postprocessing, resolve=True
                     ),
+                    gate_config=OmegaConf.to_container(config.first_gate, resolve=True),
                     cache_dir=config.server.cache_dir,
                     extra_vacancies_path=config.server.extra_vacancies_path,
                     vacancy_template=OmegaConf.to_container(

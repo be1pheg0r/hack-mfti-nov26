@@ -85,6 +85,11 @@ def test_gate_ui_preserves_unknown_and_counts_all_vacancies():
                             "status": "pass",
                             "explanation": "Подходит",
                         },
+                        {
+                            "filter": "work_schedule",
+                            "status": "pass",
+                            "explanation": "Подходит",
+                        },
                     ],
                 },
             },
