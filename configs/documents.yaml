@@ -1,0 +1,14 @@
+# Local-only ingestion. Supported: DOCX body text/tables/lists. No PDF or OCR.
+source_path: ???
+storage_root: .data/documents
+reader:
+  unicode_form: NFC
+  whitespace: preserve
+  max_file_bytes: 20971520
+  max_uncompressed_bytes: 104857600
+  max_archive_members: 2000
+hydra:
+  run:
+    dir: .data/documents/runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
