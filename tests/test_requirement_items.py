@@ -1,6 +1,6 @@
 """Check evidence spans and uncertainty on parsed requirement items."""
 
-from vacancy_parser.parser import parse_record, requirement_items
+from vrscore.vacancy_parser.parser import parse_record, requirement_items
 
 
 def test_requirement_items_preserve_verbatim_and_optional_scope():

@@ -1,6 +1,9 @@
 """Tests for evidence-preserving vacancy field extraction."""
 
-from vacancy_parser.parser import parse_record, redact_scientific_contacts
+from vrscore.vacancy_parser.parser import (
+    parse_record,
+    redact_scientific_contacts,
+)
 
 
 def test_structure_unstructured_description_and_track_evidence():

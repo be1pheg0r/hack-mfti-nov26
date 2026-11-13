@@ -18,7 +18,7 @@ class Element {
 }
 const context = { document: { createElement: tag => new Element(tag) } };
 vm.createContext(context);
-const source = fs.readFileSync('web/dataset_viewer/app.js', 'utf8');
+const source = fs.readFileSync('vrscore/web/dataset_viewer/app.js', 'utf8');
 assert(source.includes('  init();\n})();'));
 vm.runInContext(source.replace('  init();\n})();',
   '  globalThis.renderForTest = renderOverview;\n})();'), context);

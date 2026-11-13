@@ -11,9 +11,9 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 
-from vacancy_parser.dataset import _hash, _jsonl
+from .dataset import _hash, _jsonl
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _read_jsonl(path: Path) -> list[dict]:

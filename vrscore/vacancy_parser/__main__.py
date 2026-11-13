@@ -5,9 +5,9 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 
-from vacancy_parser.dataset import build_dataset
+from .dataset import build_dataset
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def resolve(value: str) -> Path:

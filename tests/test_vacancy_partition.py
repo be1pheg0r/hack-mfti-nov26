@@ -2,7 +2,7 @@
 
 import json
 
-from vacancy_parser.partition import partition_dataset
+from vrscore.vacancy_parser.partition import partition_dataset
 
 
 def test_partition_preserves_evidence_and_rejects_unknown_sources(tmp_path):

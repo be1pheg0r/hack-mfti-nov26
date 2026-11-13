@@ -2,7 +2,7 @@
 
 import hashlib
 
-from vacancy_parser.evidence import apply_source_evidence
+from vrscore.vacancy_parser.evidence import apply_source_evidence
 
 
 def test_source_evidence_restores_description_and_tags_skills():

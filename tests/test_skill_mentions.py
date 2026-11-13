@@ -1,6 +1,6 @@
 """Tests for evidence-bound vocabulary mentions."""
 
-from vacancy_parser.skill_mentions import extract_mentions
+from vrscore.vacancy_parser.skill_mentions import extract_mentions
 
 
 def test_mentions_keep_exact_quote_priority_and_offsets():

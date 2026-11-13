@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import hydra
 from omegaconf import DictConfig
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 GROUPS = [
     {"id": "it", "label": "IT и разработка"},
     {"id": "finance", "label": "Финансы и учёт"},

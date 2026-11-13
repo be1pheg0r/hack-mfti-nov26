@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from vacancy_parser.dataset import build_dataset
+from vrscore.vacancy_parser.dataset import build_dataset
 
 
 def test_build_dataset_preserves_input_and_links_every_evidence_span(tmp_path):

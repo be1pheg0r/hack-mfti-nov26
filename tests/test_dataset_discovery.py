@@ -8,7 +8,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from dataset_viewer.server import create_server
+from vrscore.dataset_viewer.server import create_server
 
 
 def make_corpus(directory, name):

@@ -9,13 +9,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from vacancy_parser.evidence import apply_source_evidence
-from vacancy_parser.parser import (
+from .evidence import apply_source_evidence
+from .parser import (
     parse_record,
     redact_scientific_contacts,
     requirement_items,
 )
-from vacancy_parser.skill_mentions import extract_mentions
+from .skill_mentions import extract_mentions
 
 
 def _hash(path: Path) -> str:

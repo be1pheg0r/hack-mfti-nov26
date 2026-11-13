@@ -3,7 +3,7 @@ dataset_dir: .data/trudvsem_mini
 discovery_root: .data
 extra_datasets:
   medium: .data/trudvsem_medium
-assets_dir: web/dataset_viewer
+assets_dir: vrscore/web/dataset_viewer
 server:
   host: 127.0.0.1
   port: 8787

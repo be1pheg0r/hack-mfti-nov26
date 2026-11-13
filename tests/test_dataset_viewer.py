@@ -1,6 +1,5 @@
 """Exercise real viewer loading, HTTP responses and private-file isolation."""
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -11,17 +10,13 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from vrscore.dataset_viewer import server as viewer_module
+
 
 @pytest.fixture
 def viewer():
-    """Load the viewer without depending on test runner import paths."""
-    path = Path(__file__).resolve().parents[1] / "dataset_viewer" / "server.py"
-    assert path.is_file(), "The dataset viewer server is not implemented"
-    spec = importlib.util.spec_from_file_location("viewer_under_test", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """Provide the dataset viewer module."""
+    return viewer_module
 
 
 @pytest.fixture
@@ -109,7 +104,7 @@ def test_module_hydra_overrides():
         [
             sys.executable,
             "-m",
-            "dataset_viewer",
+            "vrscore.dataset_viewer",
             "--cfg",
             "job",
             "server.port=9876",
@@ -124,6 +119,21 @@ def test_module_hydra_overrides():
     assert result.returncode == 0, result.stderr
     assert "port: 9876" in result.stdout
     assert "allow_private_bind: true" in result.stdout
+    assert "assets_dir: vrscore/web/dataset_viewer" in result.stdout
+    assert (root / "vrscore/web/dataset_viewer/index.html").is_file()
+    for module in (
+        "vrscore.vacancy_parser",
+        "vrscore.vacancy_parser.partition",
+    ):
+        result = subprocess.run(
+            [sys.executable, "-m", module, "--cfg", "job", "source_dir=fixture"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "source_dir: fixture" in result.stdout
 
 
 def test_switch_datasets_without_exposing_paths(viewer, corpus, tmp_path):
