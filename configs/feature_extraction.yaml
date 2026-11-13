@@ -1,4 +1,6 @@
 # Изменяйте значения через Hydra overrides перед созданием контрактов.
+postprocessing:
+  rules: [sum_experience]
 labels:
   education: Образование
   education_specialization: Специальность

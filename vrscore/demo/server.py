@@ -24,6 +24,7 @@ FILES = {
     "/fsm.css": ("fsm.css", "text/css; charset=utf-8"),
     "/typography.css": ("typography.css", "text/css; charset=utf-8"),
     "/logo.png": ("logo.png", "image/png"),
+    "/favicon.ico": ("favicon.ico", "image/vnd.microsoft.icon"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
 
@@ -173,6 +174,9 @@ def main(config: DictConfig):
                     ),
                     labels=OmegaConf.to_container(
                         config.feature_extraction.labels, resolve=True
+                    ),
+                    postprocessing=OmegaConf.to_container(
+                        config.feature_extraction.postprocessing, resolve=True
                     ),
                 ),
                 token=token,

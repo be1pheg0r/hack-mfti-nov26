@@ -12,6 +12,7 @@ from vrscore.feature_extraction.vacancy import FeatureVocabulary
 from vrscore.llm import ExtractionPrompts
 
 from .extraction import build_extraction_model, source_reference, valid_entity
+from .postprocessing import apply_rules
 
 CASE_FILES = (
     ("frontend", "Вакансия 1.docx"),
@@ -89,7 +90,16 @@ def load_case_documents(
 class DemoService:
     """Cache validated extractions in memory for the approved public case files."""
 
-    def __init__(self, provider, *, prompts=None, vocabulary=None, labels=None):
+    def __init__(
+        self,
+        provider,
+        *,
+        prompts=None,
+        vocabulary=None,
+        labels=None,
+        postprocessing=None,
+        parsed_dir=None,
+    ):
         self.provider = provider
         project = Path(__file__).resolve().parents[2]
         if prompts is None:
@@ -97,15 +107,20 @@ class DemoService:
                 OmegaConf.load(project / "configs" / "llm.yaml").prompts.extraction,
                 resolve=True,
             )
-        if vocabulary is None or labels is None:
+        if vocabulary is None or labels is None or postprocessing is None:
             defaults = OmegaConf.load(project / "configs" / "feature_extraction.yaml")
             if vocabulary is None:
                 vocabulary = OmegaConf.to_container(defaults.vocabulary, resolve=True)
             if labels is None:
                 labels = OmegaConf.to_container(defaults.labels, resolve=True)
+            if postprocessing is None:
+                postprocessing = OmegaConf.to_container(
+                    defaults.postprocessing, resolve=True
+                )
         self.prompts = ExtractionPrompts.model_validate(prompts)
         self.vocabulary = FeatureVocabulary.model_validate(vocabulary)
         self.labels = dict(labels)
+        self.postprocessing_rules = list(postprocessing["rules"])
         self.output_model = build_extraction_model(self.vocabulary)
         self.catalog_json = json.dumps(
             self.vocabulary.model_dump(), ensure_ascii=False, sort_keys=True
@@ -115,16 +130,125 @@ class DemoService:
         self.vacancies, self.resumes = load_case_documents(
             root, documents=self.documents
         )
+        self.parsed_dir = (
+            Path(parsed_dir) if parsed_dir else project / "public_data" / "parsed"
+        )
+        self.parsed = self._load_parsed()
         self.cache = {}
         self.lock = Lock()
 
+    def _load_parsed(self):
+        """Load only well-formed per-document NER outputs from the parsed folder."""
+        parsed = {}
+        if not self.parsed_dir.is_dir():
+            return parsed
+        for path in self.parsed_dir.glob("*.json"):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict) and value.get("id") == path.stem:
+                parsed[path.stem] = value
+        return parsed
+
     def catalog(self):
-        """Return metadata without pretending extraction already happened."""
+        """Return source metadata and any saved grounded extraction results."""
         return {
-            "vacancies": self.vacancies,
+            "vacancies": [
+                {**item, **self.parsed.get(item["id"], {})} for item in self.vacancies
+            ],
             "resumes": self.resumes,
             "cached": len(self.cache),
         }
+
+    def extract_document(self, document, *, kind):
+        """Extract, ground, and optionally postprocess one vacancy or resume."""
+        if kind not in {"vacancy", "resume"}:
+            raise ValueError("Unknown document kind")
+        prompt = getattr(self.prompts, kind)
+        result = self.provider.structured(
+            [
+                {"role": "system", "content": self.prompts.system + "\n" + prompt},
+                {
+                    "role": "user",
+                    "content": self.prompts.user_intro
+                    + "\n"
+                    + self.catalog_json
+                    + "\n<source_document>\n"
+                    + document["text"]
+                    + "\n</source_document>",
+                },
+            ],
+            self.output_model,
+            public_data=True,
+        )
+        result = self.output_model.model_validate(result.model_dump())
+        entities = []
+        rejected_quotes = 0
+        rejected_values = 0
+        for entity in result.entities:
+            citation = source_reference(
+                self.documents[document["document_id"]], entity.quote
+            )
+            if citation is None:
+                rejected_quotes += 1
+                continue
+            if not valid_entity(entity, self.vocabulary, kind=kind):
+                rejected_values += 1
+                continue
+            category = self.vocabulary.categories[entity.category]
+            display_value = (
+                category.values.get(entity.value, entity.value)
+                if isinstance(entity.value, str)
+                else entity.value
+            )
+            entities.append(
+                {
+                    "label": self.labels.get(entity.category, entity.category),
+                    "category": entity.category,
+                    "value": entity.value,
+                    "display_value": display_value,
+                    "polarity": entity.polarity,
+                    "importance": entity.importance,
+                    "context": entity.context,
+                    "document_id": document["document_id"],
+                    "text_version": document["text_version"],
+                    **citation,
+                }
+            )
+        rejected = rejected_quotes + rejected_values
+        if rejected and not entities:
+            raise ValueError("LLM quote or value validation failed")
+        if kind == "resume":
+            entities = apply_rules(entities, self.postprocessing_rules)
+        return {
+            "id": document["id"],
+            "kind": kind,
+            "document_id": document["document_id"],
+            "text_version": document["text_version"],
+            "entities": entities,
+            "rejected": rejected,
+            "rejected_quotes": rejected_quotes,
+            "rejected_values": rejected_values,
+        }
+
+    def extract_all(self):
+        """Run actual provider extraction on all approved files and persist JSON."""
+        results = {"vacancies": [], "resumes": []}
+        for kind, documents in (("vacancy", self.vacancies), ("resume", self.resumes)):
+            for document in documents:
+                result = self.extract_document(document, kind=kind)
+                self.parsed[document["id"]] = result
+                self.parsed_dir.mkdir(parents=True, exist_ok=True)
+                destination = self.parsed_dir / f"{document['id']}.json"
+                temporary = destination.with_suffix(".json.tmp")
+                temporary.write_text(
+                    json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                temporary.replace(destination)
+                results["vacancies" if kind == "vacancy" else "resumes"].append(result)
+        return results
 
     def analyze(self, vacancy_id, resume_id=None):
         """Extract uncached resumes and refresh the selected one on every run."""
@@ -139,67 +263,7 @@ class DemoService:
             for resume in self.resumes:
                 if resume["id"] != selected and resume["id"] in self.cache:
                     continue
-                result = self.provider.structured(
-                    [
-                        {
-                            "role": "system",
-                            "content": self.prompts.system + "\n" + self.prompts.resume,
-                        },
-                        {
-                            "role": "user",
-                            "content": self.prompts.user_intro
-                            + "\n"
-                            + self.catalog_json
-                            + "\n<source_document>\n"
-                            + resume["text"]
-                            + "\n</source_document>",
-                        },
-                    ],
-                    self.output_model,
-                    public_data=True,
-                )
-                result = self.output_model.model_validate(result.model_dump())
-                entities = []
-                rejected_quotes = 0
-                rejected_values = 0
-                for entity in result.entities:
-                    citation = source_reference(
-                        self.documents[resume["document_id"]], entity.quote
-                    )
-                    if citation is None:
-                        rejected_quotes += 1
-                        continue
-                    if not valid_entity(entity, self.vocabulary):
-                        rejected_values += 1
-                        continue
-                    category = self.vocabulary.categories[entity.category]
-                    display_value = (
-                        category.values.get(entity.value, entity.value)
-                        if isinstance(entity.value, str)
-                        else entity.value
-                    )
-                    entities.append(
-                        {
-                            "label": self.labels.get(entity.category, entity.category),
-                            "category": entity.category,
-                            "value": entity.value,
-                            "display_value": display_value,
-                            "polarity": entity.polarity,
-                            "context": entity.context,
-                            "document_id": resume["document_id"],
-                            "text_version": resume["text_version"],
-                            **citation,
-                        }
-                    )
-                rejected = rejected_quotes + rejected_values
-                if rejected and not entities:
-                    raise ValueError("LLM quote or value validation failed")
-                self.cache[resume["id"]] = {
-                    "entities": entities,
-                    "rejected": rejected,
-                    "rejected_quotes": rejected_quotes,
-                    "rejected_values": rejected_values,
-                }
+                self.cache[resume["id"]] = self.extract_document(resume, kind="resume")
             # The positions are illustrative, not a matching algorithm.
             order = {
                 "frontend": ["r2", "r4", "r1", "r3"],
