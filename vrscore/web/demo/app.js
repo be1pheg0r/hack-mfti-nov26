@@ -44,16 +44,21 @@ function renderChoice() {
 function showVacancy(id) {
   const vacancy = state.data.vacancies.find((item) => item.id === id);
   if (!vacancy) return;
+  state.pinned = [];
   $("#vacancy-list").innerHTML = state.data.vacancies.map((item) => `<button type="button" class="vacancy-choice" data-vacancy="${escapeHtml(item.id)}" aria-pressed="${item.id === id}">${escapeHtml(item.title)}</button>`).join("");
   $("#vacancy-title").textContent = vacancy.title;
   $("#vacancy-text").textContent = vacancy.text;
+  const entities = vacancy.entities ?? [];
+  $("#vacancy-entity-count").textContent = String(entities.length).padStart(2, "0");
+  $("#vacancy-entities").innerHTML = entities.length ? entities.map((e, i) => `<button type="button" class="entity" data-ids="${i}"><small>${escapeHtml(e.label)}${e.importance ? ` · ${escapeHtml(e.importance)}` : ""}</small><strong>${escapeHtml(e.display_value ?? e.value)}</strong>${e.context ? `<span class="entity-context">${escapeHtml(e.context)}</span>` : ""}</button>`).join("") : "<p class=\"findings-hint\">Сущности вакансии ещё не сохранены.</p>";
+  renderSource(vacancy, "#vacancy-text", "фрагмент вакансии");
   if (!$("#vacancy-dialog").open) $("#vacancy-dialog").showModal();
 }
-function renderSource(person) {
+function renderSource(person, selector = "#result-text", kind = "резюме") {
   const chars = Array.from(person.text);
-  const valid = person.entities.map((entity, index) => ({...entity, index})).filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && e.start >= 0 && e.end <= chars.length && e.start < e.end && chars.slice(e.start, e.end).join("") === e.evidence);
+  const valid = (person.entities ?? []).flatMap((entity, index) => (entity.sources ?? [entity]).map((source) => ({...source, index}))).filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && e.start >= 0 && e.end <= chars.length && e.start < e.end && chars.slice(e.start, e.end).join("") === e.evidence);
   const edges = [...new Set([0, chars.length, ...valid.flatMap((e) => [e.start, e.end])])].sort((a, b) => a - b);
-  const node = $("#result-text"); node.replaceChildren();
+  const node = $(selector); node.replaceChildren();
   for (let i = 0; i < edges.length - 1; i++) {
     const start = edges[i], end = edges[i + 1];
     const ids = valid.filter((e) => e.start <= start && e.end >= end).map((e) => e.index);
@@ -62,12 +67,12 @@ function renderSource(person) {
     const mark = document.createElement("span");
     mark.className = "source-span"; mark.dataset.ids = ids.join(",");
     mark.setAttribute("tabindex", "0"); mark.setAttribute("role", "button");
-    mark.setAttribute("aria-label", `Фрагмент резюме: ${text}`); mark.textContent = text;
+    mark.setAttribute("aria-label", `${kind}: ${text}`); mark.textContent = text;
     node.append(mark);
   }
 }
-function highlight(ids) {
-  document.querySelectorAll("[data-ids]").forEach((element) => {
+function highlight(root, ids) {
+  root.querySelectorAll("[data-ids]").forEach((element) => {
     const active = element.dataset.ids.split(",").some((id) => ids.includes(id));
     element.classList.toggle("is-active", active);
   });
@@ -86,7 +91,7 @@ function renderResult(person) {
 $("#login-form").addEventListener("submit", (event) => { event.preventDefault(); state.token = $("#token").value; enter(); });
 $("#logout").addEventListener("click", () => { sessionStorage.removeItem("svodka-token"); location.reload(); });
 $("#vacancies-button").addEventListener("click", () => showVacancy(state.data.vacancies[0].id));
-$("#vacancy-close").addEventListener("click", () => $("#vacancy-dialog").close());
+$("#vacancy-close").addEventListener("click", () => { state.pinned = []; $("#vacancy-dialog").close(); });
 $("#vacancy-list").addEventListener("click", (event) => { const button = event.target.closest("[data-vacancy]"); if (button) showVacancy(button.dataset.vacancy); });
 $("#jobs").addEventListener("click", (event) => { const button = event.target.closest("[data-vacancy]"); if (button) showVacancy(button.dataset.vacancy); });
 $("#resume-list").addEventListener("click", (event) => { const button = event.target.closest("button[data-id]"); if (!button) return; state.selected = button.dataset.id; renderChoice(); });
@@ -102,21 +107,24 @@ $("#analyze").addEventListener("click", async () => {
     renderResult(person); transition("result");
   } catch (error) { transition("choose"); $("#choose-error").textContent = error.message; }
 });
-const result = $("#result");
-function revealCounterpart(item) {
+function revealCounterpart(root, item) {
   const ids = item.dataset.ids.split(",");
-  const selector = item.classList.contains("entity") ? ".source-span" : ".entity";
-  const target = [...result.querySelectorAll(selector)].find((node) => node.dataset.ids.split(",").some((id) => ids.includes(id)));
+  const entity = item.classList.contains("entity");
+  const selector = entity ? ".source-span" : ".entity";
+  const target = [...root.querySelectorAll(selector)].find((node) => node.dataset.ids.split(",").some((id) => ids.includes(id)));
   if (!target) return;
-  const scroller = target.closest(selector === ".entity" ? ".findings-body" : ".document-body");
+  const scroller = target.closest(entity ? (root.id === "vacancy-dialog" ? ".vacancy-source" : ".document-body") : (root.id === "vacancy-dialog" ? ".vacancy-findings" : ".findings-body"));
   const parent = scroller.getBoundingClientRect(), rect = target.getBoundingClientRect();
   if (rect.top < parent.top || rect.bottom > parent.bottom) scroller.scrollTop += rect.top - parent.top - 20;
 }
-result.addEventListener("mouseover", (event) => { const item = event.target.closest("[data-ids]"); if (item && result.contains(item)) { highlight(item.dataset.ids.split(",")); revealCounterpart(item); } });
-result.addEventListener("mouseout", (event) => { if (event.target.closest("[data-ids]") && !event.relatedTarget?.closest?.("[data-ids]")) highlight(state.pinned); });
-result.addEventListener("focusin", (event) => { const item = event.target.closest("[data-ids]"); if (item) { highlight(item.dataset.ids.split(",")); revealCounterpart(item); } });
-result.addEventListener("focusout", () => highlight(state.pinned));
-function pin(item) { state.pinned = item.dataset.ids.split(","); highlight(state.pinned); revealCounterpart(item); }
-result.addEventListener("click", (event) => { const item = event.target.closest("[data-ids]"); if (item) pin(item); });
-result.addEventListener("keydown", (event) => { const item = event.target.closest(".source-span"); if (item && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); pin(item); } });
+function connectHighlights(root) {
+  root.addEventListener("mouseover", (event) => { const item = event.target.closest("[data-ids]"); if (item && root.contains(item)) { highlight(root, item.dataset.ids.split(",")); revealCounterpart(root, item); } });
+  root.addEventListener("mouseout", (event) => { if (event.target.closest("[data-ids]") && !event.relatedTarget?.closest?.("[data-ids]")) highlight(root, state.pinned); });
+  root.addEventListener("focusin", (event) => { const item = event.target.closest("[data-ids]"); if (item) { highlight(root, item.dataset.ids.split(",")); revealCounterpart(root, item); } });
+  root.addEventListener("focusout", () => highlight(root, state.pinned));
+  root.addEventListener("click", (event) => { const item = event.target.closest("[data-ids]"); if (item) { state.pinned = item.dataset.ids.split(","); highlight(root, state.pinned); revealCounterpart(root, item); } });
+  root.addEventListener("keydown", (event) => { const item = event.target.closest(".source-span"); if (item && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); state.pinned = item.dataset.ids.split(","); highlight(root, state.pinned); revealCounterpart(root, item); } });
+}
+connectHighlights($("#result"));
+connectHighlights($("#vacancy-dialog"));
 if (state.token) enter();

@@ -134,6 +134,9 @@ def test_http_auth_and_cross_origin_denial():
         with urlopen(f"http://127.0.0.1:{port}/logo.png") as response:
             assert response.headers.get_content_type() == "image/png"
             assert response.read(8) == b"\x89PNG\r\n\x1a\n"
+        with urlopen(f"http://127.0.0.1:{port}/favicon.ico") as response:
+            assert response.headers.get_content_type() == "image/vnd.microsoft.icon"
+            assert response.read(4) == b"\x00\x00\x01\x00"
         headers["Origin"] = "http://evil.example"
         with pytest.raises(HTTPError) as forbidden:
             urlopen(Request(url, headers=headers))

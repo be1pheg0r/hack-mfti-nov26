@@ -21,8 +21,12 @@ prompts:
       Never fabricate a quote. Use null for unknown or unstated information.
       Assign a category from the supplied catalog. For enumerated categories use only
       the specified value codes. Experience values are numeric years. For open-ended
-      skill categories, keep each original skill or technology as its own entity.
-      Use context for qualifiers such as commercial experience, language, or scope.
+      skill categories, merge aliases and repeated mentions of the same technology
+      into one entity (e.g. Tailwind and Tailwind CSS, or Vue.js and Vue 3). Use the
+      most specific name supported by the source, and retain relevant qualifiers in
+      context. Group closely related aspects of one skill only when appropriate;
+      keep distinct technologies and materially different skills as separate entities.
+      Preserve distinctions such as version, commercial experience, language, or scope.
       If the source is too vague to identify an enumerated value, use the other
       category with the original phrase instead of guessing a specific code.
     resume: |
@@ -32,6 +36,11 @@ prompts:
       including professional roles, skills, employment history and total experience,
       education, languages and language levels, employment and work schedule,
       work location, format, salary expectations, relocation and business travel.
+      For experience, extract each explicitly stated job duration in years. If job
+      durations are present, do not also extract a total covering those same jobs,
+      and do not extract overlapping skill-specific experience durations as separate
+      experience entities. If only a total is stated, extract that total instead.
+      Do not calculate durations or invent experience not stated in the source.
       Extract each independent fact separately and preserve relevant qualifiers.
       Relocation and travel preferences belong to mobility, never hard_skill or
       soft_skill: refusal to relocate is mobility with polarity absent, whereas

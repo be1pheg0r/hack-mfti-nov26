@@ -42,10 +42,21 @@ def build_extraction_model(vocabulary: FeatureVocabulary) -> type[Extracted]:
     )
 
 
-def valid_entity(entity: Entity, vocabulary: FeatureVocabulary) -> bool:
-    """Enforce the configured category/value domain and resume-only fields."""
+def valid_entity(
+    entity: Entity, vocabulary: FeatureVocabulary, *, kind: str = "resume"
+) -> bool:
+    """Enforce category, value, and document-specific extraction semantics."""
     definition = vocabulary.categories.get(entity.category)
-    if definition is None or entity.importance is not None:
+    if definition is None or kind not in {"resume", "vacancy"}:
+        return False
+    allowed_importance = set(vocabulary.importance)
+    if kind == "resume" and entity.importance is not None:
+        return False
+    if kind == "vacancy" and (
+        entity.polarity is not None
+        or entity.importance is not None
+        and entity.importance not in allowed_importance
+    ):
         return False
     value = entity.value
     if definition.value_type == "number":
