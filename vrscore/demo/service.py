@@ -99,6 +99,7 @@ class DemoService:
         labels=None,
         postprocessing=None,
         parsed_dir=None,
+        cache_dir=None,
     ):
         self.provider = provider
         project = Path(__file__).resolve().parents[2]
@@ -133,30 +134,98 @@ class DemoService:
         self.parsed_dir = (
             Path(parsed_dir) if parsed_dir else project / "public_data" / "parsed"
         )
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         self.parsed = self._load_parsed()
-        self.cache = {}
+        self.cache = dict(self.parsed)
         self.lock = Lock()
 
+    def cache_key(self, document, kind):
+        """Hash document identity and effective extraction configuration."""
+        provider_config = getattr(self.provider, "config", None)
+        if provider_config is not None:
+            provider_config = provider_config.model_dump(mode="json")
+        payload = {
+            "version": 1,
+            "kind": kind,
+            "document_id": document["document_id"],
+            "text_version": document["text_version"],
+            "text_sha256": hashlib.sha256(document["text"].encode()).hexdigest(),
+            "prompts": self.prompts.model_dump(mode="json"),
+            "vocabulary": self.vocabulary.model_dump(mode="json"),
+            "labels": self.labels,
+            "postprocessing": self.postprocessing_rules,
+            "llm": provider_config,
+        }
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
     def _load_parsed(self):
-        """Load only well-formed per-document NER outputs from the parsed folder."""
+        """Load only results with matching document and configuration hashes."""
         parsed = {}
-        if not self.parsed_dir.is_dir():
-            return parsed
-        for path in self.parsed_dir.glob("*.json"):
-            try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+        documents = {
+            item["id"]: (kind, item)
+            for kind, entries in (("vacancy", self.vacancies), ("resume", self.resumes))
+            for item in entries
+        }
+        for directory in (self.parsed_dir, self.cache_dir):
+            if directory is None or not directory.is_dir():
                 continue
-            if isinstance(value, dict) and value.get("id") == path.stem:
-                parsed[path.stem] = value
+            for path in directory.glob("*.json"):
+                try:
+                    value = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(value, dict) or path.stem not in documents:
+                    continue
+                kind, document = documents[path.stem]
+                if (
+                    value.get("id") == path.stem
+                    and value.get("kind") == kind
+                    and value.get("document_id") == document["document_id"]
+                    and value.get("text_version") == document["text_version"]
+                    and value.get("cache_key") == self.cache_key(document, kind)
+                    and isinstance(value.get("entities"), list)
+                ):
+                    parsed[path.stem] = value
         return parsed
+
+    def _cached_extraction(self, document, kind):
+        key = self.cache_key(document, kind)
+        result = self.cache.get(document["id"])
+        if result is not None and result.get("cache_key") == key:
+            return result
+        result = self.extract_document(document, kind=kind)
+        self.cache[document["id"]] = result
+        if self.cache_dir is not None:
+            self._save_result(result, self.cache_dir)
+        return result
+
+    @staticmethod
+    def _save_result(result, directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / f"{result['id']}.json"
+        temporary = destination.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        temporary.replace(destination)
 
     def catalog(self):
         """Return source metadata and any saved grounded extraction results."""
+        with self.lock:
+            vacancies = [
+                {
+                    **item,
+                    **(
+                        self._cached_extraction(item, "vacancy")
+                        if self.provider
+                        else self.cache.get(item["id"], {})
+                    ),
+                }
+                for item in self.vacancies
+            ]
         return {
-            "vacancies": [
-                {**item, **self.parsed.get(item["id"], {})} for item in self.vacancies
-            ],
+            "vacancies": vacancies,
             "resumes": self.resumes,
             "cached": len(self.cache),
         }
@@ -226,6 +295,7 @@ class DemoService:
             "kind": kind,
             "document_id": document["document_id"],
             "text_version": document["text_version"],
+            "cache_key": self.cache_key(document, kind),
             "entities": entities,
             "rejected": rejected,
             "rejected_quotes": rejected_quotes,
@@ -239,31 +309,22 @@ class DemoService:
             for document in documents:
                 result = self.extract_document(document, kind=kind)
                 self.parsed[document["id"]] = result
-                self.parsed_dir.mkdir(parents=True, exist_ok=True)
-                destination = self.parsed_dir / f"{document['id']}.json"
-                temporary = destination.with_suffix(".json.tmp")
-                temporary.write_text(
-                    json.dumps(result, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-                temporary.replace(destination)
+                self.cache[document["id"]] = result
+                self._save_result(result, self.parsed_dir)
                 results["vacancies" if kind == "vacancy" else "resumes"].append(result)
         return results
 
     def analyze(self, vacancy_id, resume_id=None):
-        """Extract uncached resumes and refresh the selected one on every run."""
+        """Reuse results for unchanged documents and extraction configuration."""
         if not any(v["id"] == vacancy_id for v in self.vacancies):
             raise ValueError("Unknown vacancy")
         if resume_id is not None and not any(
             r["id"] == resume_id for r in self.resumes
         ):
             raise ValueError("Unknown resume")
-        selected = resume_id or self.resumes[0]["id"]
         with self.lock:
             for resume in self.resumes:
-                if resume["id"] != selected and resume["id"] in self.cache:
-                    continue
-                self.cache[resume["id"]] = self.extract_document(resume, kind="resume")
+                self._cached_extraction(resume, "resume")
             # The positions are illustrative, not a matching algorithm.
             order = {
                 "frontend": ["r2", "r4", "r1", "r3"],

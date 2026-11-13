@@ -62,14 +62,14 @@ def test_extraction_checks_evidence_and_reuses_cache(tmp_path):
     with pytest.raises(ValueError, match="approved"):
         load_case_documents(copied)
     first = service.analyze("frontend")
-    assert provider.calls == len(service.resumes)
+    assert provider.calls == len(service.resumes) + len(service.vacancies)
     ivanov = next(r for r in first["resumes"] if r["id"] == "r1")
     assert ivanov["entities"][0]["evidence"] == "Python"
     service.analyze("frontend")
-    assert provider.calls == len(service.resumes) + 1
+    assert provider.calls == len(service.resumes) + len(service.vacancies)
     assert service.catalog()["resumes"][0]["text"]
     selected = service.analyze("frontend", resume_id="r2")
-    assert provider.calls == len(service.resumes) + 2
+    assert provider.calls == len(service.resumes) + len(service.vacancies)
     assert next(r for r in selected["resumes"] if r["id"] == "r2")["id"] == "r2"
     with pytest.raises(ValueError, match="resume"):
         service.analyze("frontend", resume_id="unknown")

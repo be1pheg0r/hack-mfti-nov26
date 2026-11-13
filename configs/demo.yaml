@@ -9,5 +9,6 @@ server:
   port: 18765
   bind: 127.0.0.1
   public_origin: ''
+  cache_dir: ''
 auth:
   token_env: VRSCORE_DEMO_TOKEN
