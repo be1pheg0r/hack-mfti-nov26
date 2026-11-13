@@ -19,8 +19,8 @@ prompts:
       Do not invent, infer, or omit individual technical skills or qualifications.
       For every entity, include a short verbatim quote copied exactly from the source.
       Never fabricate a quote. Use null for unknown or unstated information.
-      Assign a category from the supplied catalog. For enumerated categories use only
-      the specified value codes. Experience values are numeric years. For open-ended
+      For enumerated categories use only the specified value codes. Experience values
+      are numeric years. For open-ended
       skill categories, merge aliases and repeated mentions of the same technology
       into one entity (e.g. Tailwind and Tailwind CSS, or Vue.js and Vue 3). Use the
       most specific name supported by the source, and retain relevant qualifiers in
@@ -32,7 +32,7 @@ prompts:
     resume: |
       This document is a resume. For each stated skill or qualification set polarity
       to present or absent only when explicitly affirmed or denied; otherwise null.
-      Set importance to null. Extract all explicitly stated relevant information,
+      Assign a category from the catalog. Set importance to null. Extract all explicitly stated relevant information,
       including professional roles, skills, employment history and total experience,
       education, languages and language levels, employment and work schedule,
       work location, format, salary expectations, relocation and business travel.
@@ -51,11 +51,17 @@ prompts:
       Prefer the shortest source substring that still substantiates the fact;
       retain the exact original Unicode characters, spacing and punctuation.
     vacancy: |
-      This document is a vacancy. Extract the requirements and conditions, not the
-      candidate's qualifications. Set polarity to null. Set importance to strict only
-      if explicitly mandatory, good2have if explicitly an advantage, honestly_desired
-      if explicitly desired, and null if the text does not establish priority.
-      Use the other category for requirements not covered by the catalog.
+      This document is a vacancy. Fill the predefined output template with explicitly
+      stated requirements and conditions; do not output or choose category, polarity,
+      importance or ranking. Each template field has a fixed interpretation and priority.
+      Put an explicit mandatory minimum work experience, in years, into experience;
+      never place preferred, optional, unclear, or unstated experience in that field.
+      Put optional experience into preferred_experience. Put requested skills in their
+      normal skill fields, and skills explicitly optional, desirable or an advantage in
+      preferred_* fields. A requested skill is not automatically a hard disqualifier.
+      Leave every field with no supported facts as an empty array. For every fact copy
+      a continuous exact quote and retain relevant qualifiers in context. Do not invent
+      facts or classify missing resume information as a lack of skill or experience.
     user_intro: |
       Extract entities from this public source document. The catalog below lists
       allowed categories and their possible values; preserve the source language.

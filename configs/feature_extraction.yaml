@@ -1,6 +1,31 @@
 # Изменяйте значения через Hydra overrides перед созданием контрактов.
 postprocessing:
   rules: [sum_experience]
+  vacancy_rules: [location_mobility_by_format]
+# Vacancy output fields have fixed category and priority; the model fills values only.
+vacancy_template:
+  experience: {category: experience, importance: strict, description: Explicit mandatory minimum work experience in years; not optional experience.}
+  preferred_experience: {category: experience, importance: honestly_desired, description: Experience explicitly described as optional or an advantage.}
+  hard_skill: {category: hard_skill, importance: good2have, description: Skills requested for the role unless explicitly presented as an advantage.}
+  preferred_hard_skill: {category: hard_skill, importance: honestly_desired, description: Skills explicitly optional or an advantage.}
+  soft_skill: {category: soft_skill, importance: good2have, description: Requested interpersonal and organizational skills.}
+  preferred_soft_skill: {category: soft_skill, importance: honestly_desired, description: Interpersonal skills explicitly optional or an advantage.}
+  language: {category: language, importance: good2have, description: Languages requested for the role.}
+  preferred_language: {category: language, importance: honestly_desired, description: Languages explicitly optional or an advantage.}
+  education: {category: education, importance: strict, description: Education level.}
+  education_specialization: {category: education_specialization, importance: null, description: Educational specialization.}
+  certification: {category: certification, importance: null, description: Certifications or permits.}
+  language_level: {category: language_level, importance: null, description: Language level.}
+  work_schedule: {category: work_schedule, importance: strict, description: Work schedule.}
+  work_format: {category: work_format, importance: strict, description: Work format.}
+  employment_type: {category: employment_type, importance: null, description: Employment type.}
+  location: {category: location, importance: null, description: Work location.}
+  mobility: {category: mobility, importance: null, description: Travel or relocation.}
+  position_name: {category: position_name, importance: null, description: Role title.}
+  typical_position: {category: typical_position, importance: null, description: Professional area.}
+  salary_min: {category: salary_min, importance: null, description: Salary minimum.}
+  salary_max: {category: salary_max, importance: null, description: Salary maximum.}
+  other: {category: other, importance: null, description: Other explicitly stated requirements and conditions.}
 labels:
   education: Образование
   education_specialization: Специальность
@@ -22,9 +47,9 @@ labels:
   other: Другое
 vocabulary:
   importance:
-    strict: Прямо обозначено как обязательное требование.
-    good2have: Названо преимуществом или дополнительным плюсом.
-    honestly_desired: Прямо названо желательным или предпочтительным.
+    strict: Жёсткий фильтр; нарушение подтверждённого требования исключает вакансию.
+    good2have: Основное запрашиваемое умение, не автоматический отсев.
+    honestly_desired: Необязательное пожелание или дополнительное преимущество.
   categories:
     education:
       description: Уровень или вид образования.

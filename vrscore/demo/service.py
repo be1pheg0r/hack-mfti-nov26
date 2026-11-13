@@ -11,7 +11,13 @@ from vrscore.documents.docx import DocxReader
 from vrscore.feature_extraction.vacancy import FeatureVocabulary
 from vrscore.llm import ExtractionPrompts
 
-from .extraction import build_extraction_model, source_reference, valid_entity
+from .extraction import (
+    Entity,
+    build_extraction_model,
+    build_vacancy_model,
+    source_reference,
+    valid_entity,
+)
 from .postprocessing import apply_rules
 
 CASE_FILES = (
@@ -98,6 +104,7 @@ class DemoService:
         vocabulary=None,
         labels=None,
         postprocessing=None,
+        vacancy_template=None,
         parsed_dir=None,
         cache_dir=None,
     ):
@@ -108,7 +115,12 @@ class DemoService:
                 OmegaConf.load(project / "configs" / "llm.yaml").prompts.extraction,
                 resolve=True,
             )
-        if vocabulary is None or labels is None or postprocessing is None:
+        if (
+            vocabulary is None
+            or labels is None
+            or postprocessing is None
+            or vacancy_template is None
+        ):
             defaults = OmegaConf.load(project / "configs" / "feature_extraction.yaml")
             if vocabulary is None:
                 vocabulary = OmegaConf.to_container(defaults.vocabulary, resolve=True)
@@ -118,13 +130,27 @@ class DemoService:
                 postprocessing = OmegaConf.to_container(
                     defaults.postprocessing, resolve=True
                 )
+            if vacancy_template is None:
+                vacancy_template = OmegaConf.to_container(
+                    defaults.vacancy_template, resolve=True
+                )
         self.prompts = ExtractionPrompts.model_validate(prompts)
         self.vocabulary = FeatureVocabulary.model_validate(vocabulary)
         self.labels = dict(labels)
         self.postprocessing_rules = list(postprocessing["rules"])
+        self.vacancy_postprocessing_rules = list(
+            postprocessing.get("vacancy_rules", [])
+        )
         self.output_model = build_extraction_model(self.vocabulary)
+        self.vacancy_template = dict(vacancy_template)
+        self.vacancy_model = build_vacancy_model(self.vocabulary, self.vacancy_template)
         self.catalog_json = json.dumps(
             self.vocabulary.model_dump(), ensure_ascii=False, sort_keys=True
+        )
+        self.vacancy_catalog_json = json.dumps(
+            {"categories": self.vocabulary.model_dump()["categories"]},
+            ensure_ascii=False,
+            sort_keys=True,
         )
         root = project / "public_data" / "raw"
         self.documents = {}
@@ -155,6 +181,7 @@ class DemoService:
             "labels": self.labels,
             "postprocessing": self.postprocessing_rules,
             "llm": provider_config,
+            "vacancy_template": self.vacancy_template if kind == "vacancy" else None,
         }
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
@@ -186,6 +213,23 @@ class DemoService:
                     and value.get("cache_key") == self.cache_key(document, kind)
                     and isinstance(value.get("entities"), list)
                 ):
+                    if kind == "vacancy":
+                        value["entities"] = [
+                            {
+                                **{
+                                    k: v
+                                    for k, v in entity.items()
+                                    if k != "base_importance"
+                                },
+                                "importance": entity["base_importance"],
+                            }
+                            if "base_importance" in entity
+                            else entity
+                            for entity in value["entities"]
+                        ]
+                        value["entities"] = apply_rules(
+                            value["entities"], self.vacancy_postprocessing_rules
+                        )
                     parsed[path.stem] = value
         return parsed
 
@@ -235,6 +279,7 @@ class DemoService:
         if kind not in {"vacancy", "resume"}:
             raise ValueError("Unknown document kind")
         prompt = getattr(self.prompts, kind)
+        model = self.vacancy_model if kind == "vacancy" else self.output_model
         result = self.provider.structured(
             [
                 {"role": "system", "content": self.prompts.system + "\n" + prompt},
@@ -242,20 +287,37 @@ class DemoService:
                     "role": "user",
                     "content": self.prompts.user_intro
                     + "\n"
-                    + self.catalog_json
+                    + (
+                        self.vacancy_catalog_json
+                        if kind == "vacancy"
+                        else self.catalog_json
+                    )
                     + "\n<source_document>\n"
                     + document["text"]
                     + "\n</source_document>",
                 },
             ],
-            self.output_model,
+            model,
             public_data=True,
         )
-        result = self.output_model.model_validate(result.model_dump())
+        result = model.model_validate(result.model_dump())
+        if kind == "vacancy":
+            extracted = [
+                Entity(
+                    category=self.vacancy_template[name]["category"],
+                    importance=self.vacancy_template[name]["importance"],
+                    polarity=None,
+                    **fact.model_dump(),
+                )
+                for name in self.vacancy_template
+                for fact in getattr(result, name)
+            ]
+        else:
+            extracted = result.entities
         entities = []
         rejected_quotes = 0
         rejected_values = 0
-        for entity in result.entities:
+        for entity in extracted:
             citation = source_reference(
                 self.documents[document["document_id"]], entity.quote
             )
@@ -290,6 +352,8 @@ class DemoService:
             raise ValueError("LLM quote or value validation failed")
         if kind == "resume":
             entities = apply_rules(entities, self.postprocessing_rules)
+        else:
+            entities = apply_rules(entities, self.vacancy_postprocessing_rules)
         return {
             "id": document["id"],
             "kind": kind,

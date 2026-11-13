@@ -12,3 +12,4 @@ server:
   cache_dir: ''
 auth:
   token_env: VRSCORE_DEMO_TOKEN
+  min_token_length: 24

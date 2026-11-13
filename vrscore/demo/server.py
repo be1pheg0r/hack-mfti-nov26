@@ -1,5 +1,6 @@
 """Hydra-configured loopback-only demo server with bearer-token API auth."""
 
+import base64
 import hmac
 import ipaddress
 import json
@@ -81,7 +82,10 @@ class Handler(BaseHTTPRequestHandler):
     def authenticated(self):
         """Compare the API token without exposing it in URLs or server logs."""
         supplied = self.headers.get("Authorization", "")
-        return hmac.compare_digest(supplied.encode(), f"Bearer {self.token}".encode())
+        encoded = base64.urlsafe_b64encode(self.token.encode()).rstrip(b"=").decode()
+        return hmac.compare_digest(
+            supplied.encode(), f"Bearer utf8.{encoded}".encode()
+        ) or (hmac.compare_digest(supplied.encode(), f"Bearer {self.token}".encode()))
 
     def do_GET(self):
         if not self.permitted():
@@ -154,9 +158,10 @@ class Handler(BaseHTTPRequestHandler):
 def main(config: DictConfig):
     """Start on a private interface; secrets come from the environment."""
     token = os.getenv(config.auth.token_env, "")
-    if len(token) < 24:
+    if len(token) < config.auth.min_token_length or not token:
         raise RuntimeError(
-            f"Set {config.auth.token_env} to a random token of at least 24 characters"
+            f"Set {config.auth.token_env} to a token of at least "
+            f"{config.auth.min_token_length} characters"
         )
     address = ipaddress.ip_address(config.server.bind)
     if not address.is_private or address.is_unspecified:
@@ -195,6 +200,9 @@ def main(config: DictConfig):
                         config.feature_extraction.postprocessing, resolve=True
                     ),
                     cache_dir=config.server.cache_dir,
+                    vacancy_template=OmegaConf.to_container(
+                        config.feature_extraction.vacancy_template, resolve=True
+                    ),
                 ),
                 token=token,
                 port=config.server.port,

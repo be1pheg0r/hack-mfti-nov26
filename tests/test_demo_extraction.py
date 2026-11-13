@@ -150,28 +150,12 @@ def test_vacancy_extraction_keeps_requirement_importance_and_null_polarity(tmp_p
             self.calls.append((messages, public_data))
             source = messages[-1]["content"].split("<source_document>\n", 1)[1]
             quote = next(line.strip() for line in source.splitlines() if line.strip())
-            return output_type.model_validate(
-                {
-                    "entities": [
-                        {
-                            "category": "hard_skill",
-                            "value": "Python",
-                            "polarity": None,
-                            "context": "обязательный навык",
-                            "importance": "strict",
-                            "quote": quote,
-                        },
-                        {
-                            "category": "hard_skill",
-                            "value": "Vue",
-                            "polarity": "absent",
-                            "context": "must not inherit resume polarity",
-                            "importance": "not_configured",
-                            "quote": quote,
-                        },
-                    ]
-                }
-            )
+            fields = {name: [] for name in output_type.model_fields}
+            fields["experience"] = [{"value": 3.0, "context": None, "quote": quote}]
+            fields["education"] = [
+                {"value": "invalid", "context": None, "quote": quote}
+            ]
+            return output_type.model_validate(fields)
 
     provider = Provider()
     service = DemoService(provider, parsed_dir=tmp_path)
@@ -185,6 +169,31 @@ def test_vacancy_extraction_keeps_requirement_importance_and_null_polarity(tmp_p
     assert provider.calls[0][1] is True
 
 
+def test_vacancy_template_assigns_importance_without_model_field(tmp_path):
+    from vrscore.demo.service import DemoService
+
+    class Provider:
+        def structured(self, messages, output_type, *, public_data):
+            schema = output_type.model_json_schema()
+            assert "importance" not in str(schema)
+            quote = "Vue.js"
+            fields = {name: [] for name in output_type.model_fields}
+            fields["hard_skill"] = [
+                {"value": "Vue.js", "context": None, "quote": quote}
+            ]
+            fields["preferred_hard_skill"] = [
+                {"value": "Vue.js", "context": None, "quote": quote}
+            ]
+            return output_type.model_validate(fields)
+
+    service = DemoService(Provider(), parsed_dir=tmp_path)
+    result = service.extract_document(service.vacancies[0], kind="vacancy")
+    assert [(e["category"], e["importance"]) for e in result["entities"]] == [
+        ("hard_skill", "good2have"),
+        ("hard_skill", "honestly_desired"),
+    ]
+
+
 def test_every_approved_case_document_can_be_parsed_to_disk(tmp_path):
     import json
 
@@ -194,7 +203,9 @@ def test_every_approved_case_document_can_be_parsed_to_disk(tmp_path):
         def structured(self, messages, output_type, *, public_data):
             source = messages[-1]["content"]
             assert "<source_document>\n" in source
-            return output_type.model_validate({"entities": []})
+            return output_type.model_validate(
+                {name: [] for name in output_type.model_fields}
+            )
 
     service = DemoService(EmptyProvider(), parsed_dir=tmp_path)
     results = service.extract_all()
@@ -218,7 +229,9 @@ def test_matching_saved_results_are_reused_and_config_changes_invalidate(tmp_pat
 
         def structured(self, messages, output_type, *, public_data):
             self.calls += 1
-            return output_type.model_validate({"entities": []})
+            return output_type.model_validate(
+                {name: [] for name in output_type.model_fields}
+            )
 
     provider = Provider()
     service = DemoService(provider, parsed_dir=tmp_path)
@@ -314,3 +327,90 @@ def test_postprocessing_rules_can_be_disabled_and_preserve_other_entities():
     assert result[1]["sources"] == [first, second]
     with pytest.raises(ValueError, match="Unknown postprocessing rule"):
         apply_rules(entities, ["unknown"])
+
+
+@pytest.mark.parametrize(
+    ("work_format", "expected"),
+    [
+        ("remote", None),
+        ("hybrid", "good2have"),
+        ("on_site", "strict"),
+        (None, "strict"),
+    ],
+)
+def test_location_and_mobility_priorities_follow_work_format(work_format, expected):
+    from vrscore.demo.postprocessing import apply_rules
+
+    entities = [
+        {"category": "location", "value": "Москва", "importance": None},
+        {"category": "mobility", "value": "командировки", "importance": None},
+        {"category": "hard_skill", "value": "Vue", "importance": "good2have"},
+    ]
+    if work_format is not None:
+        entities.insert(0, {"category": "work_format", "value": work_format})
+    result = apply_rules(entities, ["location_mobility_by_format"])
+    assert [
+        e["importance"] for e in result if e["category"] in {"location", "mobility"}
+    ] == [expected, expected]
+    assert [e["category"] for e in result] == [e["category"] for e in entities]
+    assert (
+        next(e for e in result if e["category"] == "hard_skill")["importance"]
+        == "good2have"
+    )
+    assert all(
+        e.get("importance") is None
+        for e in entities
+        if e["category"] in {"location", "mobility"}
+    )
+
+
+def test_vacancy_rules_apply_to_cached_results_without_model_call(tmp_path):
+    from vrscore.demo.service import DemoService
+
+    class Provider:
+        calls = 0
+
+        def structured(self, messages, output_type, *, public_data):
+            self.calls += 1
+            text = messages[-1]["content"].split("<source_document>\n", 1)[1]
+            quote = next(line for line in text.splitlines() if line.strip())
+            fields = {name: [] for name in output_type.model_fields}
+            fields["work_format"] = [
+                {"value": "hybrid", "context": None, "quote": quote}
+            ]
+            fields["location"] = [{"value": "Москва", "context": None, "quote": quote}]
+            return output_type.model_validate(fields)
+
+    provider = Provider()
+    old = DemoService(
+        provider, parsed_dir=tmp_path, postprocessing={"rules": [], "vacancy_rules": []}
+    )
+    saved = old.extract_document(old.vacancies[0], kind="vacancy")
+    old._save_result(saved, tmp_path)
+    assert (
+        next(e for e in saved["entities"] if e["category"] == "location")["importance"]
+        is None
+    )
+    new = DemoService(
+        provider,
+        parsed_dir=tmp_path,
+        postprocessing={"rules": [], "vacancy_rules": ["location_mobility_by_format"]},
+    )
+    loaded = new._cached_extraction(new.vacancies[0], "vacancy")
+    assert (
+        next(e for e in loaded["entities"] if e["category"] == "location")["importance"]
+        == "good2have"
+    )
+    assert provider.calls == 1
+    new._save_result(loaded, tmp_path)
+    disabled = DemoService(
+        provider, parsed_dir=tmp_path, postprocessing={"rules": [], "vacancy_rules": []}
+    )
+    restored = disabled._cached_extraction(disabled.vacancies[0], "vacancy")
+    assert (
+        next(e for e in restored["entities"] if e["category"] == "location")[
+            "importance"
+        ]
+        is None
+    )
+    assert provider.calls == 1
