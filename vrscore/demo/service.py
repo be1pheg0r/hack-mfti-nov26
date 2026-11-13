@@ -9,6 +9,7 @@ from threading import Lock
 
 from omegaconf import OmegaConf
 
+from vrscore.documents.dataset import from_dataset_record
 from vrscore.documents.docx import DocxReader
 from vrscore.feature_extraction.vacancy import FeatureVocabulary
 from vrscore.gates import apply_vacancy_defaults, evaluate_first_gate
@@ -71,6 +72,65 @@ RESUME_FILES = (
     ),
 )
 
+# Prepared private resume artifacts approved for local parsing. The directory is
+# configurable, but approval is bound to these code-pinned hashes.
+REAL_RESUME_FILES = tuple(f"real_r{i}.json" for i in range(5, 11))
+APPROVED_REAL_RESUME_HASHES = {
+    "real_r5.json": "fdcdb8aa9d65cc3c67fa3b01bb6113d262f44143c76e290c09f01869c57d35d2",
+    "real_r6.json": "490a239b4587a2b2ec39ae48bf95f6139216ff1307266b37ed3963c2cf4453d8",
+    "real_r7.json": "2be51c3c0c3c6cd9788ec8fd1470c3605fcd1a4dc1eba479465cc3eb720ffe6e",
+    "real_r8.json": "b0ab6e49751edcddafc100feb207556245a3f22e3718c9ebc84045325ef7d8cf",
+    "real_r9.json": "64ede004340b75ba4925028f4ea87aae2e89c7e9584a3e5ac063f083cc896476",
+    "real_r10.json": "ddef3a733c1c4d9bffe54676a79ec6814e504bee696d8095c221f901151e2673",
+}
+
+
+def load_private_real_resumes(directory, *, documents=None):
+    """Load exactly the approved records into sanitized demo identities."""
+    directory = Path(directory)
+    adapted = []
+    for index, filename in enumerate(REAL_RESUME_FILES, 5):
+        raw = (directory / filename).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != APPROVED_REAL_RESUME_HASHES[filename]:
+            raise ValueError("Private resume differs from approved input")
+        try:
+            record = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Approved private resume is not valid JSON") from exc
+        if record.get("kind") != "resume":
+            raise ValueError("Approved private record is not a resume")
+        safe_id = f"real_r{index}"
+        text = record["text"]
+        adapter_record = {
+            **record,
+            "id": safe_id,
+            "attributes": {"description": text},
+            "sections": [
+                {
+                    "source_field": "description",
+                    "label": "Описание",
+                    "start": 0,
+                    "end": len(text),
+                }
+            ],
+        }
+        document = from_dataset_record(adapter_record)
+        if documents is not None:
+            documents[document.document_id] = document
+        adapted.append(
+            {
+                "id": safe_id,
+                "name": f"Обезличенное резюме {index}",
+                "title": record["title"],
+                "text": document.text,
+                "document_id": document.document_id,
+                "text_version": document.text_version,
+                "warnings": list(document.warnings),
+            }
+        )
+    return adapted
+
+
 # Only the exact files attested by the user may be sent to the external API.
 APPROVED_HASHES = {
     "Вакансия 1.docx": (
@@ -116,7 +176,7 @@ APPROVED_HASHES = {
 
 
 def load_case_documents(
-    directory: Path, *, documents=None
+    directory: Path, *, documents=None, include_synthetic=True
 ) -> tuple[list[dict], list[dict]]:
     """Read the explicitly approved case DOCX files without truncation."""
     reader = DocxReader()
@@ -143,6 +203,7 @@ def load_case_documents(
             line.strip() for line in document["text"].splitlines() if line.strip()
         )
         vacancies.append({"id": identifier, "title": title, **document})
+    resume_files = RESUME_FILES if include_synthetic else RESUME_FILES[:4]
     resumes = [
         {
             "id": identifier,
@@ -151,7 +212,7 @@ def load_case_documents(
             **({"synthetic": True} if identifier.startswith("synthetic_") else {}),
             **read(filename),
         }
-        for identifier, filename, name, title in RESUME_FILES
+        for identifier, filename, name, title in resume_files
     ]
     return vacancies, resumes
 
@@ -245,9 +306,11 @@ class DemoService:
         cache_dir=None,
         extra_vacancies_path=None,
         matching_gt_path=None,
+        real_resumes_path=None,
     ):
         self.provider = provider
         self.gate_config = gate_config
+        self.real_resumes_path = Path(real_resumes_path) if real_resumes_path else None
         project = Path(__file__).resolve().parents[2]
         if prompts is None:
             prompts = OmegaConf.to_container(
@@ -293,9 +356,17 @@ class DemoService:
         )
         root = project / "public_data" / "raw"
         self.documents = {}
-        self.vacancies, self.resumes = load_case_documents(
-            root, documents=self.documents
-        )
+        if real_resumes_path is None:
+            self.vacancies, self.resumes = load_case_documents(
+                root, documents=self.documents
+            )
+        else:
+            self.vacancies, self.resumes = load_case_documents(
+                root, documents=self.documents, include_synthetic=False
+            )
+            self.resumes = self.resumes[:4] + load_private_real_resumes(
+                real_resumes_path, documents=self.documents
+            )
         self.extra_vacancies = load_extra_vacancies(extra_vacancies_path)
         if {v["id"] for v in self.extra_vacancies} & {v["id"] for v in self.vacancies}:
             raise ValueError("Duplicate vacancy ID across corpora")
@@ -533,6 +604,19 @@ class DemoService:
         """Extract, ground, and optionally postprocess one vacancy or resume."""
         if kind not in {"vacancy", "resume"}:
             raise ValueError("Unknown document kind")
+        if kind == "resume" and document["id"].startswith("real_r"):
+            filename = document["id"] + ".json"
+            if (
+                self.real_resumes_path is None
+                or filename not in APPROVED_REAL_RESUME_HASHES
+            ):
+                raise ValueError("Private resume is not approved")
+            raw = (self.real_resumes_path / filename).read_bytes()
+            if (
+                hashlib.sha256(raw).hexdigest() != APPROVED_REAL_RESUME_HASHES[filename]
+                or json.loads(raw).get("text") != document["text"]
+            ):
+                raise ValueError("Private resume differs from approved input")
         prompt = getattr(self.prompts, kind)
         model = self.vacancy_model if kind == "vacancy" else self.output_model
         result = self.provider.structured(

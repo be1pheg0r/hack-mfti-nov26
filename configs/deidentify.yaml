@@ -1,0 +1,4 @@
+# Input and output are deliberately unset: supply both as Hydra overrides.
+input_path: null
+output_path: null
+names: []

@@ -217,6 +217,11 @@ def main(config: DictConfig):
                     cache_dir=config.server.cache_dir,
                     extra_vacancies_path=config.server.extra_vacancies_path,
                     matching_gt_path=config.server.matching_gt_path,
+                    real_resumes_path=(
+                        config.server.real_resumes_path
+                        if config.server.real_resumes_enabled
+                        else None
+                    ),
                     vacancy_template=OmegaConf.to_container(
                         config.feature_extraction.vacancy_template, resolve=True
                     ),

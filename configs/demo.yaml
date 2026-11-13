@@ -13,6 +13,8 @@ server:
   cache_dir: .data/mfti_demo/demo_cache
   extra_vacancies_path: .data/mfti_demo/vacancies.json
   matching_gt_path: .data/mfti_matching_gt
+  real_resumes_enabled: false
+  real_resumes_path: .data/mfti_real_work
 auth:
   token_env: VRSCORE_DEMO_TOKEN
   min_token_length: 24
