@@ -1,0 +1,96 @@
+# Synthetic validation can override gt_dir; real-GT runs are intentionally opt-in.
+run_name: skill-index-ablation-v1
+output_dir: .experiments/skill-index-ablation-v1
+gt_dir: .data/mfti_matching_gt
+cutoffs: [1, 2, 3, 4, 5]
+indexes:
+  - name: exact
+    type: exact
+    config:
+      name: exact_skills
+      categories: [hard_skill, soft_skill]
+      aliases: {}
+      importance_weights:
+        strict: 1.0
+        good2have: 1.0
+        honestly_desired: 1.0
+        unknown: 1.0
+  - name: bm25
+    type: bm25
+    config:
+      name: bm25_skills
+      categories: [hard_skill, soft_skill]
+      merge_skill_categories: true
+      k1: 1.2
+      b: 0.75
+      delta: 0.0
+      stopwords: {enabled: false, files: [configs/stopwords/ru.txt], keep: [], preserve_ascii_single_letter: true}
+  - name: tantivy
+    type: tantivy
+    config:
+      name: tantivy_exact_skills
+      categories: [hard_skill, soft_skill]
+      aliases: {}
+      importance_weights:
+        strict: 1.0
+        good2have: 1.0
+        honestly_desired: 1.0
+        unknown: 1.0
+  - name: bm25_separate
+    type: bm25
+    config:
+      name: bm25_skills_separate
+      categories: [hard_skill, soft_skill]
+      merge_skill_categories: false
+      k1: 1.2
+      b: 0.75
+      delta: 0.0
+      stopwords: {enabled: false, files: [configs/stopwords/ru.txt], keep: [], preserve_ascii_single_letter: true}
+  - name: bm25_stop
+    type: bm25
+    config:
+      name: bm25_skills_stop
+      categories: [hard_skill, soft_skill]
+      merge_skill_categories: true
+      k1: 1.2
+      b: 0.75
+      delta: 0.0
+      stopwords: {enabled: true, files: [configs/stopwords/ru.txt], keep: [], preserve_ascii_single_letter: true}
+  - name: bm25_separate_stop
+    type: bm25
+    config:
+      name: bm25_skills_separate_stop
+      categories: [hard_skill, soft_skill]
+      merge_skill_categories: false
+      k1: 1.2
+      b: 0.75
+      delta: 0.0
+      stopwords: {enabled: true, files: [configs/stopwords/ru.txt], keep: [], preserve_ascii_single_letter: true}
+rrf:
+  enabled: true
+  k: 60
+  combinations:
+    - [exact, bm25]
+    - [bm25, tantivy]
+    - [exact, bm25_stop]
+    - [bm25_stop, tantivy]
+gate:
+  enabled: false
+  unknown_policy: include
+  config: null
+timing:
+  enabled: true
+  warmup_iterations: 1
+  iterations: 3
+scope:
+  excluded_methods:
+    vector_store:
+      reason: "Excluded: LocalVectorStore requires vectors, but this pipeline has no configured vector encoder."
+    rrf_exact_tantivy:
+      reason: "Excluded: Exact and Tantivy share the exact-skill signal, so their fusion is redundant."
+hydra:
+  run:
+    dir: ${output_dir}
+  output_subdir: null
+  job:
+    chdir: false

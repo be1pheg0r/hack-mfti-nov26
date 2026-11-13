@@ -1,0 +1,12 @@
+# rank-bm25 BM25Plus; all parameters can be overridden with Hydra.
+name: bm25_skills
+categories: [hard_skill, soft_skill]
+merge_skill_categories: true
+k1: 1.2
+b: 0.75
+delta: 0.0
+stopwords:
+  enabled: true
+  files: [configs/stopwords/ru.txt]
+  keep: []
+  preserve_ascii_single_letter: true

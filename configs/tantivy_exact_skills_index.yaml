@@ -1,0 +1,4 @@
+# In-memory Tantivy inverted index; matching policy mirrors the Exact baseline.
+name: tantivy_exact_skills
+writer_heap_bytes: 15000000
+writer_threads: 1
