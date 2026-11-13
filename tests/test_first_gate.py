@@ -8,7 +8,38 @@ from vrscore.gates import evaluate_first_gate
 DATA = Path(__file__).parents[1] / "public_data" / "parsed"
 
 
-def test_missing_vacancy_values_use_labeled_defaults_and_resume_null_is_unknown():
+def test_missing_gate_attributes_pass_without_claiming_a_match():
+    vacancy = parsed("frontend")
+    resume = parsed("r1")
+    result = evaluate_first_gate(vacancy, resume)
+    education = next(d for d in result["decisions"] if d["filter"] == "education")
+    assert education["status"] == "pass"
+    assert education["reason"] == "vacancy_not_stated"
+    assert any(d["filter"] == "work_format" for d in result["decisions"])
+
+    values = {
+        "experience": 2,
+        "education": "bachelor",
+        "work_format": "on_site",
+        "work_schedule": "full_time",
+    }
+    for category, value in values.items():
+        config = {"filters": {"order": [category]}}
+        explicit = {"entities": [{"category": category, "value": value}]}
+        missing = {"entities": [{"category": category, "value": None}]}
+        for requirement, candidate, reason in (
+            (missing, explicit, "vacancy_not_stated"),
+            (explicit, missing, "resume_not_stated"),
+            (missing, missing, "vacancy_and_resume_not_stated"),
+        ):
+            decision = evaluate_first_gate(requirement, candidate, config)["decisions"][
+                0
+            ]
+            assert decision["status"] == "pass"
+            assert decision["reason"] == reason
+
+
+def test_missing_vacancy_values_use_labeled_defaults():
     from vrscore.gates import apply_vacancy_defaults
 
     vacancy = {
@@ -43,9 +74,8 @@ def test_missing_vacancy_values_use_labeled_defaults_and_resume_null_is_unknown(
     assert evaluate_first_gate(vacancy, resume)["status"] == "pass"
     resume["entities"][1]["value"] = None
     result = evaluate_first_gate(vacancy, resume)
-    assert result["status"] == "unknown"
-    assert result["decisions"][-1]["status"] == "unknown"
-    assert result["decisions"][-1]["reason"] == "resume_not_stated"
+    assert result["status"] == "pass"
+    assert result["decisions"][1]["reason"] == "vacancy_and_resume_not_stated"
     resume["entities"][1]["value"] = "bachelor"
     resume["entities"][2]["value"] = "remote"
     resume["entities"][3]["value"] = "shift"
@@ -66,7 +96,7 @@ def test_strict_schedule_missing_in_resume_is_not_stated():
     vacancy = {"entities": [{"category": "work_schedule", "value": "full_time"}]}
     resume = {"entities": [{"category": "work_schedule", "value": None}]}
     result = evaluate_first_gate(vacancy, resume, config)
-    assert result["status"] == "unknown"
+    assert result["status"] == "pass"
     assert result["decisions"][0]["reason"] == "resume_not_stated"
     resume["entities"][0]["value"] = "full_time"
     assert evaluate_first_gate(vacancy, resume, config)["status"] == "pass"
@@ -95,7 +125,7 @@ def test_actual_parsed_entities_gate_in_order_and_preserve_evidence():
 
 def test_actual_parsed_work_format_alternatives_and_overlap_caveat():
     result = evaluate_first_gate(parsed("accountant"), parsed("r2"))
-    assert result["status"] == "unknown"
+    assert result["status"] == "pass"
     assert [item["filter"] for item in result["decisions"]] == [
         "experience",
         "education",
@@ -143,7 +173,7 @@ def test_rule_objects_share_context_result_and_gate_supports_extension():
     }
 
 
-def test_unknown_short_circuits_and_requirements_ignore_importance():
+def test_missing_resume_fields_pass_without_losing_missing_reasons():
     vacancy = {
         "kind": "vacancy",
         "entities": [
@@ -154,8 +184,8 @@ def test_unknown_short_circuits_and_requirements_ignore_importance():
     }
     resume = {"kind": "resume", "entities": []}
     result = evaluate_first_gate(vacancy, resume)
-    assert result["status"] == "unknown"
-    assert [item["filter"] for item in result["decisions"]] == ["experience"]
+    assert result["status"] == "pass"
+    assert all("not_stated" in item["reason"] for item in result["decisions"])
 
 
 def test_incomplete_education_can_only_count_when_explicitly_configured():

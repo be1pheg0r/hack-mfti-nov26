@@ -22,7 +22,7 @@ def test_gate_cli_uses_actual_parsed_json_and_config_overrides(tmp_path, capsys)
         )
     main.__wrapped__(config)
     decision = json.loads(capsys.readouterr().out)
-    assert decision["status"] == "unknown"
+    assert decision["status"] == "pass"
     assert [entry["filter"] for entry in decision["decisions"]] == [
         "experience",
         "education",

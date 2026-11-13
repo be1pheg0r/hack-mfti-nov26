@@ -59,6 +59,22 @@ process.stdout.write(JSON.stringify({
     return json.loads(result.stdout)
 
 
+def test_passed_missing_requirements_are_visible():
+    decisions = [
+        {"filter": name, "status": "pass", "explanation": "Проверка пройдена"}
+        for name in ("experience", "education", "work_format", "work_schedule")
+    ]
+    decisions[1]["reason"] = "vacancy_not_stated"
+    payload = {
+        "vacancies": [
+            {"title": "Frontend", "gate": {"status": "pass", "decisions": decisions}}
+        ]
+    }
+    result = run_gate_ui(payload)
+    assert result["summary"]["pass"] == 1
+    assert "В вакансии не указано" in result["html"]
+
+
 def test_gate_ui_preserves_unknown_and_counts_all_vacancies():
     payload = {
         "resume_id": "r1",
