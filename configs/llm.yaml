@@ -28,9 +28,19 @@ prompts:
     resume: |
       This document is a resume. For each stated skill or qualification set polarity
       to present or absent only when explicitly affirmed or denied; otherwise null.
-      Set importance to null. In addition to the supplied catalog, the categories
-      position_name, typical_position, salary_min and salary_max are allowed.
-      Preserve the original education description if it cannot be normalized.
+      Set importance to null. Extract all explicitly stated relevant information,
+      including professional roles, skills, employment history and total experience,
+      education, languages and language levels, employment and work schedule,
+      work location, format, salary expectations, relocation and business travel.
+      Extract each independent fact separately and preserve relevant qualifiers.
+      Relocation and travel preferences belong to mobility, never hard_skill or
+      soft_skill: refusal to relocate is mobility with polarity absent, whereas
+      willingness to travel is a separate mobility entity with polarity present.
+      A missing fact is unknown, not an absent skill. Preserve the original
+      education description if it cannot be normalized. Copy every quote verbatim
+      from one continuous part of the document without ellipses or changes.
+      Prefer the shortest source substring that still substantiates the fact;
+      retain the exact original Unicode characters, spacing and punctuation.
     vacancy: |
       This document is a vacancy. Extract the requirements and conditions, not the
       candidate's qualifications. Set polarity to null. Set importance to strict only

@@ -1,0 +1,13 @@
+defaults:
+  - llm@llm
+  - feature_extraction@feature_extraction
+  - _self_
+
+llm:
+  max_tokens: 16384
+server:
+  port: 18765
+  bind: 127.0.0.1
+  public_origin: ''
+auth:
+  token_env: VRSCORE_DEMO_TOKEN

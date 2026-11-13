@@ -1,0 +1,12 @@
+/* Clear, humanist small type: no condensed or monospaced micro-labels. */
+.steps,.plain-button,.back-button,.overline,.counter,.panel-header,.doc-tag,.footnote,.findings-hint,.note,.arena-title,.arena-caption,.entity small,.login-panel label,.action{font-family:Manrope,Arial,sans-serif;font-size:12px;line-height:1.45;letter-spacing:.01em;font-weight:700}
+.resume-choice strong,.job{font-size:13px}.resume-choice small{font-size:12px}.footnote{font-size:11px;font-weight:500}.findings-hint{font-weight:500}.entity small{font-size:11px}
+.entity-context{display:block;margin-top:5px;font:400 12px/1.5 Manrope,Arial,sans-serif;color:#4f5c4e}
+@media(max-width:560px){.steps{font-size:0}.steps b{font-size:12px}.panel-header,.back-button{font-size:11px}.footnote{font-size:11px}}
+
+.header-actions{display:flex;align-items:center;gap:24px}.header-actions .plain-button{min-width:auto}
+#vacancy-dialog{width:min(1100px,94vw);height:min(680px,85vh);max-height:85vh;border:1px solid var(--ink);padding:24px;background:var(--paper);color:var(--ink);overflow:hidden}
+#vacancy-dialog::backdrop{background:rgba(25,30,24,.55)}
+.dialog-heading{display:flex;justify-content:space-between;align-items:center;height:55px;margin-bottom:14px}.dialog-heading h2{font:600 40px/1 Oswald,Arial,sans-serif;margin:0}
+.vacancy-dialog-grid{display:grid;grid-template-columns:32% 1fr;gap:12px;height:calc(100% - 69px);min-height:0}.vacancy-list,.vacancy-document{border:1px solid var(--ink);background:#fafaf6;overflow:auto}.vacancy-list{padding:12px}.vacancy-document{padding:25px}.vacancy-document h3{font:600 26px/1.2 Oswald,Arial,sans-serif;margin:0 0 20px}.vacancy-choice{display:block;width:100%;padding:15px 8px;border:0;border-bottom:1px solid #c6cec1;background:transparent;text-align:left;font:700 13px/1.5 Manrope,Arial,sans-serif;color:var(--ink)}.vacancy-choice[aria-pressed=true],.vacancy-choice:hover{background:var(--green)}
+@media(max-width:700px){.header-actions{gap:12px}.header-actions .plain-button{font-size:10px}.vacancy-dialog-grid{display:flex;flex-direction:column}.vacancy-list{max-height:32%;flex:none}.vacancy-document{flex:1;min-height:0;padding:16px}}

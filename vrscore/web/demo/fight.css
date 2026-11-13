@@ -1,0 +1,10 @@
+/* A pair of paper contestants collide behind the dust cloud. */
+.fight {position:relative; isolation:isolate}
+.fight::before,.fight::after {content:'•  •'; position:absolute; top:47px; width:65px; height:78px; border:2px solid #242520; box-shadow:5px 5px 0 #242520; background:#faf7e8; text-align:center; font:bold 22px/58px Manrope,sans-serif; z-index:-1;}
+.fight::before {left:calc(50% - 130px); animation:contestant-left .34s ease-in-out infinite alternate;}
+.fight::after {right:calc(50% - 130px); background:#d2dfb9; animation:contestant-right .29s ease-in-out infinite alternate;}
+.fight .dust {z-index:1; text-shadow:18px 5px #dbc0a3,-18px -3px #e8d4bc;}
+.fight strong {z-index:2; text-shadow:2px 2px #f2c9a1;}
+@keyframes contestant-left {from{transform:translate(-25px,-9px) rotate(-20deg)}to{transform:translate(24px,9px) rotate(18deg)}}
+@keyframes contestant-right {from{transform:translate(25px,8px) rotate(20deg)}to{transform:translate(-24px,-8px) rotate(-18deg)}}
+@media(prefers-reduced-motion:reduce){.fight::before,.fight::after{animation:none}}

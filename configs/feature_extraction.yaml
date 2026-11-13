@@ -1,4 +1,23 @@
 # Изменяйте значения через Hydra overrides перед созданием контрактов.
+labels:
+  education: Образование
+  education_specialization: Специальность
+  experience: Опыт работы
+  hard_skill: Профессиональный навык
+  soft_skill: Личное качество
+  language: Язык
+  language_level: Уровень языка
+  certification: Сертификат
+  work_schedule: График работы
+  work_format: Формат работы
+  employment_type: Занятость
+  location: Местоположение
+  mobility: Мобильность
+  position_name: Должность
+  typical_position: Направление
+  salary_min: Зарплата от
+  salary_max: Зарплата до
+  other: Другое
 vocabulary:
   importance:
     strict: Прямо обозначено как обязательное требование.
@@ -73,6 +92,21 @@ vocabulary:
     location:
       description: Требование к месту работы или географической доступности.
       value_type: text
+    mobility:
+      description: Готовность или отказ от переезда и командировок, с контекстом.
+      value_type: text
+    position_name:
+      description: Указанная должность или профессиональная роль.
+      value_type: text
+    typical_position:
+      description: Указанное профессиональное направление.
+      value_type: text
+    salary_min:
+      description: Нижняя граница ожидаемой заработной платы.
+      value_type: number
+    salary_max:
+      description: Верхняя граница ожидаемой заработной платы.
+      value_type: number
     other:
       description: Явное требование, которое не относится к другим категориям.
       value_type: text
