@@ -1,0 +1,14 @@
+source_dir: .data/mfti_vacancies/full_structured
+main_dir: .data/mfti_vacancies_structured
+appendix_dir: .data/mfti_vacancies_appendix
+main_kinds:
+  - mipt_hr_id
+  - hh_vacancy_id
+appendix_kinds:
+  - competition_vacancy_id
+  - mipt_pps_department_position
+hydra:
+  run:
+    dir: .data/vacancy_parser/partition_runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

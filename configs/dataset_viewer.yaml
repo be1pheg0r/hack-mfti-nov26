@@ -1,4 +1,6 @@
 dataset_dir: .data/trudvsem_mini
+# Compatible direct children are discovered on server startup. Set null to disable.
+discovery_root: .data
 extra_datasets:
   medium: .data/trudvsem_medium
 assets_dir: web/dataset_viewer

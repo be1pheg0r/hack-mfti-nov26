@@ -1,0 +1,10 @@
+source_dir: .data/mfti_vacancies
+output_dir: .data/mfti_vacancies/full_structured
+source_evidence: .data/mfti_vacancies/verified_source_evidence.jsonl
+duplicate_resolutions: .data/mfti_vacancies/verified_duplicate_resolutions.json
+skill_vocabulary: .data/mfti_vacancies/skill_vocabulary.json
+hydra:
+  run:
+    dir: .data/vacancy_parser/runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

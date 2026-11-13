@@ -20,6 +20,15 @@
   const kindLabel = kind => kind === 'resume' ? 'Резюме' : kind === 'vacancy' ? 'Вакансия' : 'Запись';
   const groupLabel = id => state.groups.find(g => g.id === id)?.label || GROUP_LABELS[id] || id || 'Не указано';
   const escText = value => value == null || value === '' ? 'Не указано' : String(value);
+  const SOURCE_VALUES = {
+    generic_role_requirements_not_department_specific: 'Общие требования к должности, не отдельной кафедры',
+    search_index_excerpt_incomplete: 'Неполная поисковая выдержка',
+    official_page_extracted_sections: 'Разделы официальной карточки МФТИ',
+    selected_fields_full_page: 'Отдельные поля оригинальной карточки',
+    public_page_description: 'Описание публичной карточки hh',
+    third_party_full_description_unverified: 'Описание из сторонней копии, полнота не проверена',
+    unknown: 'Неизвестно', listed_at_capture: 'Была в списке при сборе', active: 'Была активна при сборе'
+  };
   const showToast = message => { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200); };
   const dateValue = r => r?.source?.published_at || '';
   const dateLabel = value => { if (!value) return 'Дата не указана'; const d = new Date(value); return Number.isNaN(+d) ? String(value) : new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'short', day: 'numeric' }).format(d); };
@@ -60,7 +69,10 @@
       const empty = el('div', 'empty-list'); empty.append(el('strong', '', state.records.length ? 'Ничего не найдено' : 'Данные не загружены'), el('span', '', state.records.length ? 'Измените запрос или сбросьте фильтры.' : 'Проверьте, что сервер доступен и API запущен.'));
       const clear = el('button', '', 'Сбросить фильтры'); clear.type = 'button'; clear.addEventListener('click', clearFilters); empty.append(clear); host.append(empty); renderCounts(); return;
     }
-    records.slice(0, state.limit).forEach(r => {
+    const visible = records.slice(0, state.limit);
+    const selected = records.find(r => String(r.id) === state.selectedId);
+    if (selected && !visible.includes(selected)) visible.unshift(selected);
+    visible.forEach(r => {
       const button = el('button', `record-option${String(r.id) === state.selectedId ? ' selected' : ''}`); button.type = 'button'; button.role = 'option'; button.dataset.id = r.id; button.setAttribute('aria-selected', String(String(r.id) === state.selectedId));
       const icon = el('span', `kind-icon${r.kind === 'vacancy' ? ' vacancy' : ''}`, recordIcon(r.kind)); icon.setAttribute('aria-hidden', 'true');
       const copy = el('span', 'record-copy'); copy.append(el('span', 'record-title', displayTitle(r)), el('span', 'record-meta', `${kindLabel(r.kind)} · ${groupLabel(r.sampling_group)} · ${dateLabel(dateValue(r))}`));
@@ -79,7 +91,7 @@
   function selectRecord(id, updateHash = true) {
     const r = recordById(id); if (!r) return;
     state.selectedId = String(r.id); state.tab = 'overview';
-    const index = filteredRecords().findIndex(item => item.id === r.id); if (index >= state.limit) state.limit = index + 1;
+
     if (updateHash) history.replaceState(null, '', `#${encodeURIComponent(r.id)}`);
     $('#reader-empty').hidden = true; $('#reader-content').hidden = false;
     $('.browser').classList.add('show-reader'); $('#mobile-back').hidden = false;
@@ -97,18 +109,21 @@
   }
   function renderOverview(r, panel) {
     const attrs = attrsOf(r), text = String(r.text || '');
+    const quality = r.source?.text_completeness;
+    if (['generic_role_requirements_not_department_specific', 'search_index_excerpt_incomplete'].includes(quality)) {
+      const warning = el('p', 'provenance-note', SOURCE_VALUES[quality]); warning.setAttribute('role', 'note'); panel.append(warning);
+    }
     const summary = el('section', 'summary-block'); summary.append(el('h3', 'section-heading', 'Текст записи')); const excerpt = el('div', 'summary-text', text ? (text.length > 1250 ? `${text.slice(0, 1250)}…` : text) : 'Не указано'); summary.append(excerpt); panel.append(summary);
     const skills = ['skills', 'hardSkills', 'softSkills'].filter(k => Array.isArray(attrs[k]));
     if (skills.length) skills.forEach(key => { const vals = attrs[key].filter(x => x != null && String(x).trim()); const section = el('section', 'summary-block'); section.append(el('h3', 'section-heading', key === 'hardSkills' ? 'Профессиональные навыки' : key === 'softSkills' ? 'Личные качества' : 'Навыки')); const chips = el('div', 'chips'); if (vals.length) vals.forEach(v => chips.append(el('span', `skill-chip${key === 'softSkills' ? ' soft' : ''}`, String(v)))); else chips.append(el('span', 'meta-item missing', 'Не указано')); section.append(chips); panel.append(section); });
     const visibleFields = Object.entries(attrs).filter(([k]) => !['skills', 'hardSkills', 'softSkills'].includes(k));
     const grid = el('div', 'field-grid');
-    const known = new Set(visibleFields.map(([k]) => k));
-    ['experience','experienceRequirements','education','educationRequirements','scheduleType','busyType','salaryMin','salaryMax','responsibilities','positionRequirements'].filter(k => !known.has(k)).forEach(k => visibleFields.push([k, null]));
+
     visibleFields.forEach(([key, value]) => addField(grid, FIELD_LABELS[key] || key, displayField(key, value))); panel.append(grid);
   }
   function sourceGrid(source, r) {
-    const grid = el('dl', 'source-grid'); const fields = [['ID записи', r.id], ['Область выборки', groupLabel(r.sampling_group)], ['Издатель', source.publisher], ['Дата публикации', source.published_at], ['Исходный URL', source.original_url], ['Репозиторий копии', source.copy_repository], ['Ревизия копии', source.copy_revision], ['Файл копии', source.copy_file], ['Номер строки в источнике', source.source_row_zero_based], ['Тип ID источника', source.source_id_kind], ['ID источника', source.source_id], ['SHA-256 текста', r.text_sha256]];
-    fields.forEach(([label, val]) => { const item = el('div', 'source-item'); item.append(el('dt', '', label), el('dd', '', escText(val))); grid.append(item); }); return grid;
+    const grid = el('dl', 'source-grid'); const fields = [['ID записи', r.id], ['Область выборки', groupLabel(r.sampling_group)], ['Издатель', source.publisher], ['Способ получения', source.acquisition], ['Полнота текста', source.text_completeness], ['Статус при сборе', source.status_at_collection], ['Дата сбора', source.captured_at], ['Дата публикации', source.published_at], ['Исходный URL', source.original_url], ['Репозиторий копии', source.copy_repository], ['Ревизия копии', source.copy_revision], ['Файл копии', source.copy_file], ['Номер строки в источнике', source.source_row_zero_based], ['Тип ID источника', source.source_id_kind], ['ID источника', source.source_id], ['SHA-256 текста', r.text_sha256]];
+    fields.forEach(([label, val]) => { const item = el('div', 'source-item'); item.append(el('dt', '', label), el('dd', '', escText(SOURCE_VALUES[val] || val))); grid.append(item); }); return grid;
   }
   function renderDetail(r) {
     const host = $('#reader-content'); host.replaceChildren(); const detail = el('article', 'record-detail');
@@ -159,7 +174,7 @@
     } catch(err) { if(sequence!==loadSequence)return;host.replaceChildren();const box=el('div','empty-list error-state');box.append(el('strong','','Не удалось загрузить данные'),el('span','',`${err.message}. Убедитесь, что локальный сервер запущен.`));const retry=el('button','','Повторить загрузку');retry.type='button';retry.addEventListener('click',loadDataset);box.append(retry);host.append(box);$('#list-summary').textContent='Нет соединения с API';$('#filtered-count').textContent='0'; }
   }
   async function loadCatalog() {
-    try { const response=await fetch('/api/datasets'); if(!response.ok)throw new Error('catalog'); const data=await response.json(); const select=$('#dataset-select'); select.replaceChildren(); data.datasets.forEach(item=>{const option=el('option','',item.name);option.value=item.id;select.append(option);});select.value=state.dataset; }
+    try { const response=await fetch('/api/datasets'); if(!response.ok)throw new Error('catalog'); const data=await response.json(); if(!Array.isArray(data.datasets)||!data.datasets.length)throw new Error('catalog'); const select=$('#dataset-select'); select.replaceChildren(); data.datasets.forEach(item=>{const counts=item.actual||{};const option=el('option','',`${item.name} · ${counts.resumes ?? '—'} резюме / ${counts.vacancies ?? '—'} вакансий`);option.value=item.id;select.append(option);});if(!data.datasets.some(item=>item.id===state.dataset)){if(new URLSearchParams(location.search).has('dataset'))showToast('Набор не найден; выбран доступный');state.dataset=data.default_dataset||data.datasets[0].id;readFavorites();}select.value=state.dataset; }
     catch (_) { showToast('Не удалось загрузить список наборов'); }
   }
   function init() {
@@ -178,7 +193,7 @@
     window.addEventListener('hashchange',()=>{const id=decodeURIComponent(location.hash.slice(1));if(id&&recordById(id))selectRecord(id,false);});
     $('#dataset-select').addEventListener('change',e=>{state.dataset=e.target.value;state.records=[];state.manifest={};state.selectedId='';state.limit=100;readFavorites();const url=new URL(location.href);url.searchParams.set('dataset',state.dataset);url.hash='';history.replaceState(null,'',url);$('#reader-content').hidden=true;$('#reader-empty').hidden=false;$('.browser').classList.remove('show-reader');$('#mobile-back').hidden=true;clearFilters();loadDataset();});
     state.dataset=new URLSearchParams(location.search).get('dataset')||'mini';readFavorites();
-    renderGroups();loadCatalog();loadDataset();
+    renderGroups();loadCatalog().then(loadDataset);
   }
   init();
 })();
