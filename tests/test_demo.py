@@ -165,3 +165,53 @@ def test_http_auth_and_cross_origin_denial():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_server_waits_for_inflight_request_on_shutdown():
+    """A service restart must not abort a running analysis response."""
+    import threading
+    from http.server import BaseHTTPRequestHandler
+    from urllib.request import urlopen
+
+    from vrscore.demo.server import ThreadingHTTPServer
+
+    entered, release = threading.Event(), threading.Event()
+
+    class SlowHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            entered.set()
+            assert release.wait(3)
+            body = b'{"ok": true}'
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), SlowHandler)
+    assert server.daemon_threads is False
+    serving = threading.Thread(target=server.serve_forever)
+    serving.start()
+    result = []
+    client = threading.Thread(
+        target=lambda: result.append(
+            urlopen(f"http://127.0.0.1:{server.server_port}", timeout=3).read()
+        )
+    )
+    client.start()
+    try:
+        assert entered.wait(2)
+        server.shutdown()
+        closing = threading.Thread(target=server.server_close)
+        closing.start()
+        assert closing.is_alive()
+        release.set()
+        closing.join(3)
+        client.join(3)
+        assert result == [b'{"ok": true}']
+        assert not closing.is_alive()
+    finally:
+        release.set()
+        serving.join(3)
+        client.join(3)
