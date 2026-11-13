@@ -5,8 +5,11 @@ import ipaddress
 import json
 import logging
 import os
+import signal
+import threading
 from functools import partial
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer as BaseThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,6 +30,12 @@ FILES = {
     "/favicon.ico": ("favicon.ico", "image/vnd.microsoft.icon"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
+
+
+class ThreadingHTTPServer(BaseThreadingHTTPServer):
+    """Wait for active requests before closing during a service restart."""
+
+    daemon_threads = False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -185,7 +194,16 @@ def main(config: DictConfig):
             ),
         )
         print(f"Demo: http://127.0.0.1:{config.server.port}", flush=True)
+        stopping = threading.Event()
+
+        def stop_on_signal(signum, frame):
+            if not stopping.is_set():
+                stopping.set()
+                threading.Thread(target=server.shutdown, daemon=True).start()
+
+        previous_handler = signal.signal(signal.SIGTERM, stop_on_signal)
         try:
             server.serve_forever()
         finally:
             server.server_close()
+            signal.signal(signal.SIGTERM, previous_handler)
