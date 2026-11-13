@@ -1,0 +1,13 @@
+# The caller supplies ready vectors; this command never embeds or parses data.
+backend: sqlite_vec
+operation: search
+record_id: ""
+vector: []
+database_path: .data/vector_store/vectors.sqlite3
+dimension: 384
+limit: 5
+hydra:
+  run:
+    dir: .data/vector_store/runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

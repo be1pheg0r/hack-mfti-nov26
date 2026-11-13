@@ -1,0 +1,11 @@
+defaults:
+  - first_gate
+  - _self_
+
+vacancy: ???
+resume: ???
+hydra:
+  run:
+    dir: .data/first_gate/runs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

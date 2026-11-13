@@ -1,0 +1,21 @@
+filters:
+  order: [experience, education, work_format]
+  categories:
+    experience: experience
+    education: education
+    work_format: work_format
+education:
+  # Ordered from lowest to highest. A non-negative resume-minus-vacancy
+  # rank difference meets the requirement.
+  levels: [secondary_general, secondary_vocational, bachelor, specialist, master, postgraduate, candidate_of_sciences, doctor_of_sciences]
+  aliases:
+    higher: bachelor
+    secondary: secondary_general
+    vocational: secondary_vocational
+  allow_incomplete: false
+  incomplete_markers: [неокончен, незаверш, incomplete, unfinished]
+work_format:
+  compatibility:
+    hybrid: [hybrid]
+    remote: [hybrid, remote]
+    on_site: [on_site]
