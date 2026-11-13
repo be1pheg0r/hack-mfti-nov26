@@ -10,7 +10,6 @@ import hashlib
 import json
 import re
 import unicodedata
-from dataclasses import asdict, dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
@@ -21,9 +20,11 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from lxml.etree import XMLSyntaxError
+from pydantic import Field
 
 from .contracts import (
     DocumentError,
+    ImmutableContract,
     ListInfo,
     ParsedDocument,
     SourceLocation,
@@ -33,31 +34,14 @@ from .contracts import (
 PARSER_VERSION = "docx-body-v1"
 
 
-@dataclass(frozen=True)
-class ReaderOptions:
+class ReaderOptions(ImmutableContract):
     """Version-affecting normalisation policy; no truncation is permitted."""
 
     unicode_form: Literal["none", "NFC", "NFD", "NFKC", "NFKD"] = "NFC"
-    whitespace: str = "preserve"
-    max_file_bytes: int = 20 * 1024 * 1024
-    max_uncompressed_bytes: int = 100 * 1024 * 1024
-    max_archive_members: int = 2000
-
-    def __post_init__(self) -> None:
-        """Reject unknown policies before extracting content."""
-        if self.unicode_form not in ("none", "NFC", "NFD", "NFKC", "NFKD"):
-            raise ValueError("Unsupported Unicode normalisation form")
-        if self.whitespace not in ("preserve", "collapse"):
-            raise ValueError("Whitespace policy must be preserve or collapse")
-        if (
-            min(
-                self.max_file_bytes,
-                self.max_uncompressed_bytes,
-                self.max_archive_members,
-            )
-            <= 0
-        ):
-            raise ValueError("Document limits must be positive")
+    whitespace: Literal["preserve", "collapse"] = "preserve"
+    max_file_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    max_uncompressed_bytes: int = Field(default=100 * 1024 * 1024, gt=0)
+    max_archive_members: int = Field(default=2000, gt=0)
 
     @property
     def version(self) -> str:
@@ -156,7 +140,8 @@ class DocxReader:
                     "start": cursor,
                     "end": cursor + len(text),
                     "source": SourceLocation(
-                        "word/document.xml", element.getroottree().getpath(element)
+                        part="word/document.xml",
+                        xml_path=element.getroottree().getpath(element),
                     ),
                     "list_info": info,
                 }
@@ -169,8 +154,8 @@ class DocxReader:
                 "blocks": [
                     {
                         **item,
-                        "source": asdict(item["source"]),
-                        "list_info": asdict(item["list_info"])
+                        "source": item["source"].model_dump(),
+                        "list_info": item["list_info"].model_dump()
                         if item["list_info"]
                         else None,
                     }
@@ -182,7 +167,10 @@ class DocxReader:
             separators=(",", ":"),
         )
         text_version = hashlib.sha256(version_payload.encode("utf-8")).hexdigest()
-        blocks = tuple(TextBlock(document_id, text_version, **item) for item in drafts)
+        blocks = tuple(
+            TextBlock(document_id=document_id, text_version=text_version, **item)
+            for item in drafts
+        )
         if not any(block.text.strip() for block in blocks):
             if "images_not_extracted" in warnings:
                 raise DocumentError(
@@ -193,13 +181,13 @@ class DocxReader:
                 "empty_document", "В основном содержимом DOCX нет текста."
             )
         return ParsedDocument(
-            document_id,
-            text_version,
-            PARSER_VERSION,
-            self.options.version,
-            "\n".join(block.text for block in blocks),
-            blocks,
-            warnings,
+            document_id=document_id,
+            text_version=text_version,
+            parser_version=PARSER_VERSION,
+            normalization=self.options.version,
+            text="\n".join(block.text for block in blocks),
+            blocks=blocks,
+            warnings=warnings,
         )
 
     def _validate_archive(self, data: bytes) -> tuple[str, ...]:
@@ -334,4 +322,4 @@ class DocxReader:
                 level = numbering.ilvl.val
         if numbering_id in (None, 0):
             return None
-        return ListInfo(numbering_id, level or 0)
+        return ListInfo(numbering_id=numbering_id, level=level or 0)

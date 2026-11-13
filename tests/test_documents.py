@@ -2,12 +2,60 @@
 
 import hashlib
 import json
-from dataclasses import FrozenInstanceError, replace
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from docx.oxml import OxmlElement
+from pydantic import ValidationError
+
+
+def test_contracts_have_json_schemas_and_validate_roundtrip(docx_bytes, tmp_path):
+    """Expose typed JSON schemas and retain document consistency on validation."""
+    from pydantic import BaseModel
+
+    from vrscore.documents import DocxReader, ReaderOptions
+    from vrscore.documents.contracts import (
+        Evidence,
+        ListInfo,
+        ParsedDocument,
+        SourceLocation,
+        TextBlock,
+    )
+    from vrscore.documents.storage import StoredDocument
+
+    for contract in (
+        Evidence,
+        ListInfo,
+        ParsedDocument,
+        SourceLocation,
+        TextBlock,
+        ReaderOptions,
+        StoredDocument,
+    ):
+        assert issubclass(contract, BaseModel)
+        assert contract.model_json_schema()["type"] == "object"
+
+    document = DocxReader().read(
+        docx_bytes(lambda doc: doc.add_paragraph("Python")), filename="resume.docx"
+    )
+    assert ParsedDocument.model_validate_json(document.model_dump_json()) == document
+    payload = document.model_dump(mode="json")
+    payload["blocks"][0]["end"] += 1
+    with pytest.raises(ValidationError, match="offsets"):
+        ParsedDocument.model_validate(payload)
+    with pytest.raises(ValidationError):
+        ReaderOptions(max_file_bytes=0)
+    evidence = document.quote(document.blocks[0].block_id, 0, 6, "Python")
+    assert Evidence.model_validate(evidence.model_dump()) == evidence
+    with pytest.raises(ValidationError, match="unexpected"):
+        Evidence.model_validate({**evidence.model_dump(), "unexpected": "field"})
+    stored = StoredDocument(
+        document=document,
+        original_path=tmp_path / "original.docx",
+        parsed_path=tmp_path / "parsed.json",
+    )
+    assert StoredDocument.model_validate_json(stored.model_dump_json()) == stored
 
 
 def test_docx_reading_order_and_evidence(docx_bytes):
@@ -47,7 +95,7 @@ def test_docx_reading_order_and_evidence(docx_bytes):
         assert block.document_id == result.document_id
         assert block.text_version == result.text_version
     assert result.blocks[0].text != result.blocks[0].original_text
-    with pytest.raises(FrozenInstanceError):
+    with pytest.raises(ValidationError):
         result.text = "changed"
     block = result.blocks[1]
     quote = result.quote(block.block_id, block.start, block.end, "Vue.js")
@@ -184,7 +232,9 @@ def test_dataset_contract_bridge(docx_bytes):
     assert view.quote(block.block_id, 0, 10, text[:10]).text == text[:10]
     with pytest.raises(ValueError, match="version"):
         view.resolve(
-            replace(view.quote(block.block_id, 0, 10, text[:10]), text_version="stale")
+            view.quote(block.block_id, 0, 10, text[:10]).model_copy(
+                update={"text_version": "stale"}
+            )
         )
     with pytest.raises(ValueError):
         from_dataset_record({**structured, "text_sha256": "0" * 64})

@@ -3,15 +3,13 @@
 import json
 import os
 import tempfile
-from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .contracts import DocumentError, ParsedDocument
+from .contracts import DocumentError, ImmutableContract, ParsedDocument
 from .docx import DocxReader, ReaderOptions
 
 
-@dataclass(frozen=True)
-class StoredDocument:
+class StoredDocument(ImmutableContract):
     """Extraction and its separate original/versioned artifact locations."""
 
     document: ParsedDocument
@@ -57,7 +55,7 @@ class DocumentStore:
         )
         payload = {
             "schema_version": 1,
-            **asdict(document),
+            **document.model_dump(),
             "text_sha256": document.text_sha256,
         }
         encoded = (
@@ -70,7 +68,9 @@ class DocumentStore:
             raise DocumentError(
                 "storage_error", "Не удалось сохранить документ."
             ) from error
-        return StoredDocument(document, original, parsed)
+        return StoredDocument(
+            document=document, original_path=original, parsed_path=parsed
+        )
 
     @staticmethod
     def _publish(path: Path, data: bytes) -> None:

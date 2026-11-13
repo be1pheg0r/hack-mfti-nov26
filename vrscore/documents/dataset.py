@@ -42,20 +42,26 @@ def from_dataset_record(record: dict) -> ParsedDocument:
     parser = "dataset-text-v1"
     version = hashlib.sha256(f"{parser}:{digest}".encode("utf-8")).hexdigest()
     block = TextBlock(
-        record["id"],
-        version,
-        "b000000",
-        "paragraph",
-        text,
-        text,
-        0,
-        len(text),
-        SourceLocation("record.text"),
+        document_id=record["id"],
+        text_version=version,
+        block_id="b000000",
+        kind="paragraph",
+        text=text,
+        original_text=text,
+        start=0,
+        end=len(text),
+        source=SourceLocation(part="record.text"),
     )
     quality = record.get("source", {}).get("text_completeness")
     warnings = (f"source_quality:{quality}",) if quality else ()
     return ParsedDocument(
-        record["id"], version, parser, "identity-v1", text, (block,), warnings
+        document_id=record["id"],
+        text_version=version,
+        parser_version=parser,
+        normalization="identity-v1",
+        text=text,
+        blocks=(block,),
+        warnings=warnings,
     )
 
 

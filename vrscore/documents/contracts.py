@@ -7,8 +7,15 @@ blocks: normalisation does not claim a character-level mapping to Word XML.
 """
 
 import hashlib
-from dataclasses import dataclass
 from typing import Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, model_validator
+
+
+class ImmutableContract(BaseModel):
+    """Base for immutable, schema-exportable document contracts."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class DocumentError(ValueError):
@@ -20,8 +27,7 @@ class DocumentError(ValueError):
         self.code = code
 
 
-@dataclass(frozen=True)
-class SourceLocation:
+class SourceLocation(ImmutableContract):
     """Whole-block source coordinates; DOCX paths include table/row/cell indices."""
 
     part: str
@@ -29,16 +35,14 @@ class SourceLocation:
     page: int | None = None
 
 
-@dataclass(frozen=True)
-class ListInfo:
+class ListInfo(ImmutableContract):
     """Word list identity/level, not a fabricated rendered numbering label."""
 
     numbering_id: int
     level: int
 
 
-@dataclass(frozen=True)
-class TextBlock:
+class TextBlock(ImmutableContract):
     """One paragraph, including a list item or paragraph inside a table cell."""
 
     document_id: str
@@ -53,8 +57,7 @@ class TextBlock:
     list_info: ListInfo | None = None
 
 
-@dataclass(frozen=True)
-class Evidence:
+class Evidence(ImmutableContract):
     """An exact literal quote tied to a document, text version and single block."""
 
     document_id: str
@@ -65,8 +68,7 @@ class Evidence:
     text: str
 
 
-@dataclass(frozen=True)
-class ParsedDocument:
+class ParsedDocument(ImmutableContract):
     """Immutable extraction; warnings disclose content outside the text scope.
 
     A changed block remains traceable by ``source`` and ``original_text``, but
@@ -86,7 +88,8 @@ class ParsedDocument:
         """Hash UTF-8 text using the existing dataset's text_sha256 convention."""
         return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_blocks(self) -> "ParsedDocument":
         """Reject inconsistent offsets, duplicate identities and foreign blocks."""
         cursor = 0
         identities = set()
@@ -104,6 +107,7 @@ class ParsedDocument:
             cursor = block.end + 1
         if self.text != "\n".join(block.text for block in self.blocks):
             raise ValueError("Document text must be the ordered block representation")
+        return self
 
     def block(self, block_id: str) -> TextBlock:
         """Resolve a whole-block reference, rejecting nonexistent blocks."""
@@ -115,7 +119,12 @@ class ParsedDocument:
     def quote(self, block_id: str, start: int, end: int, text: str) -> Evidence:
         """Validate proposed literal text; never trim, repair or truncate it."""
         evidence = Evidence(
-            self.document_id, self.text_version, block_id, start, end, text
+            document_id=self.document_id,
+            text_version=self.text_version,
+            block_id=block_id,
+            start=start,
+            end=end,
+            text=text,
         )
         self.resolve(evidence)
         return evidence
