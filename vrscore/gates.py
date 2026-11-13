@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol, TypedDict
+from typing import Any, Literal, NotRequired, Protocol, TypedDict
 
 from omegaconf import OmegaConf
 
@@ -22,7 +22,7 @@ def _entities(document: dict, category: str) -> list[dict]:
         for entity in entities
         if isinstance(entity, dict)
         and entity.get("category") == category
-        and "value" in entity
+        and entity.get("value") is not None
     ]
 
 
@@ -44,6 +44,46 @@ def _config(config: dict | str | Path | None) -> dict:
 
 def _decision(filter_name: str, status: str, **details: Any) -> dict:
     return {"filter": filter_name, "status": status, **details}
+
+
+def apply_vacancy_defaults(
+    vacancy: dict, config: dict | str | Path | None = None
+) -> dict:
+    """Fill missing vacancy values without presenting assumptions as source evidence."""
+    settings = _config(config)
+    entities = vacancy.get("entities", [])
+    entities = (
+        [
+            entity
+            for entity in entities
+            if not (isinstance(entity, dict) and entity.get("defaulted"))
+        ]
+        if isinstance(entities, list)
+        else []
+    )
+    for category, value in settings["vacancy_defaults"].items():
+        if any(
+            isinstance(entity, dict)
+            and entity.get("category") == category
+            and entity.get("value") is not None
+            for entity in entities
+        ):
+            continue
+        entities = [
+            entity
+            for entity in entities
+            if not (isinstance(entity, dict) and entity.get("category") == category)
+        ]
+        entities.append(
+            {
+                "category": category,
+                "value": value,
+                "derived": True,
+                "defaulted": True,
+                "context": "Значение по умолчанию; в вакансии не указано.",
+            }
+        )
+    return {**vacancy, "entities": entities}
 
 
 def _evaluate_experience(vacancy: dict, resume: dict, category: str) -> dict:
@@ -215,6 +255,19 @@ def _evaluate_work_format(
     candidates = [
         entity for entity in all_candidates if entity.get("polarity") != "absent"
     ]
+    if requirements and all(entity.get("defaulted") for entity in requirements):
+        known = set(config["work_format"]["compatibility"])
+        status = "pass" if any(e["value"] in known for e in candidates) else "unknown"
+        return _decision(
+            "work_format",
+            status,
+            requirement=requirements,
+            candidate=all_candidates,
+            explanation=(
+                "Формат вакансии не указан; значение по умолчанию "
+                "не ограничивает кандидата."
+            ),
+        )
     if not requirements:
         return _decision(
             "work_format", "unknown", explanation="Vacancy work format is missing."
@@ -269,6 +322,7 @@ class RuleResult(TypedDict):
     filter: str
     status: Literal["pass", "fail", "unknown"]
     explanation: str
+    reason: NotRequired[str]
 
 
 @dataclass(frozen=True)
@@ -331,6 +385,46 @@ class WorkFormatRule:
         )  # type: ignore[return-value]
 
 
+class WorkScheduleRule:
+    """Compare explicitly stated work schedules without treating missing as refusal."""
+
+    name = "work_schedule"
+
+    def evaluate(self, context: RuleContext) -> RuleResult:
+        category = context.config["filters"]["categories"][self.name]
+        requirements = _entities(context.vacancy, category)
+        candidates = _entities(context.resume, category)
+        required = {entity["value"] for entity in requirements}
+        accepted = {
+            entity["value"]
+            for entity in candidates
+            if entity.get("polarity") != "absent"
+        }
+        denied = {
+            entity["value"]
+            for entity in candidates
+            if entity.get("polarity") == "absent"
+        }
+        if requirements and all(entity.get("defaulted") for entity in requirements):
+            known = set(context.config["work_schedule"]["values"])
+            status = "pass" if accepted & known else "unknown"
+        elif not required or not candidates:
+            status = "unknown"
+        elif required & accepted:
+            status = "pass"
+        elif accepted or required <= denied:
+            status = "fail"
+        else:
+            status = "unknown"
+        return _decision(
+            self.name,
+            status,
+            requirement=requirements,
+            candidate=candidates,
+            explanation="Сопоставление указанного графика работы.",
+        )  # type: ignore[return-value]
+
+
 class Gate:
     """Run rule objects in order and stop at the first non-pass result."""
 
@@ -341,6 +435,14 @@ class Gate:
         decisions = []
         for rule in self.rules:
             result = rule.evaluate(context)
+            category = context.config["filters"].get("categories", {}).get(rule.name)
+            if (
+                category
+                and result.get("status") == "unknown"
+                and not _entities(context.resume, category)
+            ):
+                result["reason"] = "resume_not_stated"
+                result["explanation"] = "Информация в резюме не указана."
             if result.get("status") not in {"pass", "fail", "unknown"}:
                 raise ValueError(f"Rule {rule.name} returned an invalid status")
             decisions.append(result)
@@ -353,6 +455,7 @@ _BUILTIN_RULES: dict[str, type[Rule]] = {
     "experience": ExperienceRule,
     "education": EducationRule,
     "work_format": WorkFormatRule,
+    "work_schedule": WorkScheduleRule,
 }
 
 
@@ -379,5 +482,9 @@ def evaluate_first_gate(
         rules = [registry[name]() for name in settings["filters"]["order"]]
     except KeyError as exc:
         raise ValueError(f"Unknown first-gate rule: {exc.args[0]}") from exc
-    context = RuleContext(vacancy=vacancy, resume=resume, config=settings)
+    context = RuleContext(
+        vacancy=apply_vacancy_defaults(vacancy, settings),
+        resume=resume,
+        config=settings,
+    )
     return Gate(rules).evaluate(context)

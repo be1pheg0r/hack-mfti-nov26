@@ -8,6 +8,72 @@ from vrscore.gates import evaluate_first_gate
 DATA = Path(__file__).parents[1] / "public_data" / "parsed"
 
 
+def test_missing_vacancy_values_use_labeled_defaults_and_resume_null_is_unknown():
+    from vrscore.gates import apply_vacancy_defaults
+
+    vacancy = {
+        "kind": "vacancy",
+        "entities": [
+            {"category": "experience", "value": None},
+            {"category": "education", "value": None},
+        ],
+    }
+    normalized = apply_vacancy_defaults(vacancy)
+    defaults = {e["category"]: e for e in normalized["entities"]}
+    expected = {
+        "experience": 0,
+        "education": "secondary_general",
+        "work_schedule": "full_time",
+        "work_format": "on_site",
+        "employment_type": "contract",
+        "salary_min": 0,
+        "salary_max": 1000000,
+    }
+    assert {key: defaults[key]["value"] for key in expected} == expected
+    assert all(defaults[key]["derived"] for key in expected)
+    assert vacancy["entities"][0]["value"] is None
+    resume = {
+        "entities": [
+            {"category": "experience", "value": 2},
+            {"category": "education", "value": "bachelor"},
+            {"category": "work_format", "value": "on_site"},
+            {"category": "work_schedule", "value": "full_time"},
+        ]
+    }
+    assert evaluate_first_gate(vacancy, resume)["status"] == "pass"
+    resume["entities"][1]["value"] = None
+    result = evaluate_first_gate(vacancy, resume)
+    assert result["status"] == "unknown"
+    assert result["decisions"][-1]["status"] == "unknown"
+    assert result["decisions"][-1]["reason"] == "resume_not_stated"
+    resume["entities"][1]["value"] = "bachelor"
+    resume["entities"][2]["value"] = "remote"
+    resume["entities"][3]["value"] = "shift"
+    assert evaluate_first_gate(vacancy, resume)["status"] == "pass"
+    overridden = apply_vacancy_defaults(
+        normalized, {"vacancy_defaults": {"salary_max": 12}}
+    )
+    assert (
+        next(
+            e["value"] for e in overridden["entities"] if e["category"] == "salary_max"
+        )
+        == 12
+    )
+
+
+def test_strict_schedule_missing_in_resume_is_not_stated():
+    config = {"filters": {"order": ["work_schedule"]}}
+    vacancy = {"entities": [{"category": "work_schedule", "value": "full_time"}]}
+    resume = {"entities": [{"category": "work_schedule", "value": None}]}
+    result = evaluate_first_gate(vacancy, resume, config)
+    assert result["status"] == "unknown"
+    assert result["decisions"][0]["reason"] == "resume_not_stated"
+    resume["entities"][0]["value"] = "full_time"
+    assert evaluate_first_gate(vacancy, resume, config)["status"] == "pass"
+    resume["entities"][0]["value"] = "shift"
+    assert evaluate_first_gate(vacancy, resume, config)["status"] == "fail"
+
+
 def parsed(identifier):
     return json.loads((DATA / f"{identifier}.json").read_text(encoding="utf-8"))
 
@@ -29,18 +95,19 @@ def test_actual_parsed_entities_gate_in_order_and_preserve_evidence():
 
 def test_actual_parsed_work_format_alternatives_and_overlap_caveat():
     result = evaluate_first_gate(parsed("accountant"), parsed("r2"))
-    assert result["status"] == "pass"
+    assert result["status"] == "unknown"
     assert [item["filter"] for item in result["decisions"]] == [
         "experience",
         "education",
         "work_format",
+        "work_schedule",
     ]
     experience = result["decisions"][0]
     assert experience["status"] == "pass"
     assert "Пересечения и дубли не проверены" in experience["candidate"][0]["context"]
     assert "overlaps/duplicates were not checked" in experience["explanation"]
     assert len(experience["candidate"][0]["sources"]) == 2
-    work_format = result["decisions"][-1]
+    work_format = result["decisions"][2]
     assert work_format["status"] == "pass"
     assert work_format["candidate"][0]["evidence_kind"] == "source_block"
     for resume_id in ("r3", "r4"):
@@ -117,6 +184,7 @@ def test_numeric_and_education_differences_are_inclusive_and_configurable():
             {"category": "experience", "value": 3},
             {"category": "education", "value": "candidate_of_sciences"},
             {"category": "work_format", "value": "on_site"},
+            {"category": "work_schedule", "value": "full_time"},
         ],
     }
     result = evaluate_first_gate(vacancy, resume)
@@ -173,6 +241,7 @@ def test_format_compatibility_rules():
                 {"category": "experience", "value": 1},
                 {"category": "education", "value": "bachelor"},
                 *[{"category": "work_format", "value": item} for item in offered],
+                {"category": "work_schedule", "value": "full_time"},
             ],
         }
         assert evaluate_first_gate(vacancy, resume)["status"] == expected

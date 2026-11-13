@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 from vrscore.documents.docx import DocxReader
 from vrscore.feature_extraction.vacancy import FeatureVocabulary
-from vrscore.gates import evaluate_first_gate
+from vrscore.gates import apply_vacancy_defaults, evaluate_first_gate
 from vrscore.llm import ExtractionPrompts
 
 from .extraction import (
@@ -180,11 +180,13 @@ class DemoService:
         labels=None,
         postprocessing=None,
         vacancy_template=None,
+        gate_config=None,
         parsed_dir=None,
         cache_dir=None,
         extra_vacancies_path=None,
     ):
         self.provider = provider
+        self.gate_config = gate_config
         project = Path(__file__).resolve().parents[2]
         if prompts is None:
             prompts = OmegaConf.to_container(
@@ -306,10 +308,12 @@ class DemoService:
                             if "base_importance" in entity
                             else entity
                             for entity in value["entities"]
+                            if not entity.get("defaulted")
                         ]
                         value["entities"] = apply_rules(
                             value["entities"], self.vacancy_postprocessing_rules
                         )
+                        value = apply_vacancy_defaults(value, self.gate_config)
                     parsed[path.stem] = value
         return parsed
 
@@ -445,7 +449,7 @@ class DemoService:
             entities = apply_rules(entities, self.postprocessing_rules)
         else:
             entities = apply_rules(entities, self.vacancy_postprocessing_rules)
-        return {
+        result = {
             "id": document["id"],
             "kind": kind,
             "document_id": document["document_id"],
@@ -456,6 +460,9 @@ class DemoService:
             "rejected_quotes": rejected_quotes,
             "rejected_values": rejected_values,
         }
+        if kind == "vacancy":
+            return apply_vacancy_defaults(result, self.gate_config)
+        return result
 
     def extract_all(self):
         """Run actual provider extraction on all approved files and persist JSON."""
@@ -479,10 +486,23 @@ class DemoService:
             vacancies = []
             for vacancy in self.vacancies:
                 features = self._available_vacancy(vacancy)
-                decision = evaluate_first_gate(features, resume_features)
                 if features.get("extraction_error"):
-                    decision["decisions"][0]["explanation"] = (
-                        "Не удалось извлечь требования вакансии; проверка невозможна."
+                    decision = {
+                        "status": "unknown",
+                        "decisions": [
+                            {
+                                "filter": "experience",
+                                "status": "unknown",
+                                "explanation": (
+                                    "Не удалось извлечь требования вакансии; "
+                                    "проверка невозможна."
+                                ),
+                            }
+                        ],
+                    }
+                else:
+                    decision = evaluate_first_gate(
+                        features, resume_features, self.gate_config
                     )
                 vacancies.append(
                     {
@@ -498,7 +518,9 @@ class DemoService:
                     "id": vacancy["id"],
                     "title": vacancy["title"],
                     "source_url": vacancy.get("source_url"),
-                    "gate": evaluate_first_gate(vacancy, resume_features),
+                    "gate": evaluate_first_gate(
+                        vacancy, resume_features, self.gate_config
+                    ),
                 }
                 for vacancy in self.extra_vacancies
             )

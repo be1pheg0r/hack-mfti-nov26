@@ -8,6 +8,7 @@
     ["experience", "Опыт"],
     ["education", "Образование"],
     ["work_format", "Формат работы"],
+    ["work_schedule", "График работы"],
   ];
   const STATUS = {
     pass: ["Соответствует", "pass"],
@@ -75,11 +76,11 @@
   }
   function entities(label, entries) {
     if (!Array.isArray(entries) || !entries.length) return `<p class="gate-no-data">${label}: данные отсутствуют.</p>`;
-    return `<div class="gate-entities"><h4>${label}</h4>${entries.map((entity) => `<div class="gate-entity"><strong>${escapeHtml(entityText(entity) || "Сущность без значения")}</strong>${entity?.label || entity?.importance || entity?.polarity === "absent" ? `<small>${[entity.label, entity.importance, entity.polarity === "absent" ? "Явное отсутствие" : ""].filter(Boolean).map(escapeHtml).join(" · ")}</small>` : ""}${evidence(entity)}</div>`).join("")}</div>`;
+    return `<div class="gate-entities"><h4>${label}</h4>${entries.map((entity) => `<div class="gate-entity"><strong>${escapeHtml(entityText(entity) === "" ? "Сущность без значения" : entityText(entity))}</strong>${entity?.label || entity?.importance || entity?.polarity === "absent" ? `<small>${[entity.label, entity.importance, entity.polarity === "absent" ? "Явное отсутствие" : ""].filter(Boolean).map(escapeHtml).join(" · ")}</small>` : ""}${evidence(entity)}</div>`).join("")}</div>`;
   }
   function decisionHtml(decision) {
     const status = statusOf(decision.status);
-    const [label, className] = decision.missing ? ["Не проверено", "unknown"] : STATUS[status];
+    const [label, className] = decision.missing ? ["Не проверено", "unknown"] : decision.reason === "resume_not_stated" ? ["Информация в резюме не указана", "unknown"] : STATUS[status];
     return `<details class="gate-rule gate-rule-${className}" ${!decision.missing && status !== "pass" ? "open" : ""}><summary><span>${escapeHtml(FILTER_NAMES[decision.filter] || decision.filter || "Правило")}</span><span class="gate-pill gate-pill-${className}">${label}</span></summary><div class="gate-rule-body"><p>${escapeHtml(explanationText(decision))}</p>${decision.difference !== undefined && decision.difference !== null ? `<p><strong>Различие:</strong> ${escapeHtml(decision.difference)}</p>` : ""}${entities("Требование вакансии", decision.requirement)}${entities("Данные резюме", decision.candidate)}</div></details>`;
   }
   function render(payload) {
