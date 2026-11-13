@@ -42,6 +42,34 @@ def build_extraction_model(vocabulary: FeatureVocabulary) -> type[Extracted]:
     )
 
 
+class VacancyValue(BaseModel):
+    """One value and its exact evidence, without model-assigned priority."""
+
+    model_config = ConfigDict(extra="forbid")
+    value: str | StrictFloat
+    context: str | None
+    quote: str = Field(min_length=1)
+
+
+def build_vacancy_model(
+    vocabulary: FeatureVocabulary, template: dict
+) -> type[BaseModel]:
+    """Build fixed output slots whose categories and priorities come from config."""
+    fields = {}
+    for name, slot in template.items():
+        if slot["category"] not in vocabulary.categories:
+            raise ValueError(f"Unknown vacancy category: {slot['category']}")
+        if (
+            slot["importance"] is not None
+            and slot["importance"] not in vocabulary.importance
+        ):
+            raise ValueError(f"Unknown vacancy priority: {slot['importance']}")
+        fields[name] = (list[VacancyValue], Field(description=slot["description"]))
+    return create_model(
+        "VacancyTemplate", __config__=ConfigDict(extra="forbid"), **fields
+    )
+
+
 def valid_entity(
     entity: Entity, vocabulary: FeatureVocabulary, *, kind: str = "resume"
 ) -> bool:

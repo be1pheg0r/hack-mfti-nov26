@@ -4,7 +4,9 @@ const state = {token: sessionStorage.getItem("svodka-token") || "", data: null, 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function api(path, options = {}) {
-  const response = await fetch(path, {...options, headers: {"Authorization": `Bearer ${state.token}`, ...(options.body ? {"Content-Type": "application/json"} : {})}});
+  const bytes = new TextEncoder().encode(state.token);
+  const encoded = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join("")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const response = await fetch(path, {...options, headers: {"Authorization": `Bearer utf8.${encoded}`, ...(options.body ? {"Content-Type": "application/json"} : {})}});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Ошибка соединения");
   return data;

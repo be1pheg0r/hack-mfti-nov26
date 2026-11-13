@@ -30,6 +30,10 @@ def test_extraction_checks_evidence_and_reuses_cache(tmp_path):
         def structured(self, messages, output_type, *, public_data):
             assert public_data is True
             self.calls += 1
+            if "entities" not in output_type.model_fields:
+                return output_type.model_validate(
+                    {name: [] for name in output_type.model_fields}
+                )
             text = messages[-1]["content"].split("<source_document>\n", 1)[1]
             return (
                 Extracted(entities=[entity("hard_skill", "Python", "Python")])
@@ -161,6 +165,45 @@ def test_http_auth_and_cross_origin_denial():
                 )
             )
         assert failed.value.code == 502
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def test_browser_auth_supports_cyrillic_tokens():
+    """Actual client JavaScript can authenticate with a UTF-8 token."""
+    import subprocess
+    import threading
+    from functools import partial
+    from http.server import ThreadingHTTPServer
+
+    from vrscore.demo.server import Handler
+
+    class Service:
+        def catalog(self):
+            return {"ok": True}
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_port
+    server.RequestHandlerClass = partial(
+        Handler, service=Service(), token="токен", port=port
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    script = r"""
+const fs = require('fs');
+const assert = require('assert');
+const sessionStorage = {getItem: () => 'токен'};
+const source = fs.readFileSync('vrscore/web/demo/app.js', 'utf8');
+const prefix = source.slice(0, source.indexOf('function transition('));
+eval(prefix + `\napi('http://127.0.0.1:${process.argv[1]}/api/demo').then(
+  data => {assert.equal(data.ok, true);},
+  error => {console.error(error.message); process.exitCode = 1;}
+);`);
+"""
+    try:
+        subprocess.run(["node", "-e", script, str(port)], check=True, timeout=5)
     finally:
         server.shutdown()
         server.server_close()
