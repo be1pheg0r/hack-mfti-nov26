@@ -16,7 +16,7 @@ def _approved_case_data():
     raw_dir = Path(__file__).resolve().parents[1] / "public_data" / "raw"
     documents = {}
     vacancies, resumes = load_case_documents(raw_dir, documents=documents)
-    assert (len(vacancies), len(resumes), len(documents)) == (3, 4, 7)
+    assert (len(vacancies), len(resumes), len(documents)) == (3, 10, 13)
     return vacancies, resumes, documents
 
 
@@ -259,8 +259,8 @@ def test_every_approved_case_document_can_be_parsed_to_disk(tmp_path):
     service = DemoService(EmptyProvider(), parsed_dir=tmp_path)
     results = service.extract_all()
     assert len(results["vacancies"]) == 3
-    assert len(results["resumes"]) == 4
-    assert len(list(tmp_path.glob("*.json"))) == 7
+    assert len(results["resumes"]) == 10
+    assert len(list(tmp_path.glob("*.json"))) == 13
     for item in [*results["vacancies"], *results["resumes"]]:
         saved = json.loads((tmp_path / f"{item['id']}.json").read_text())
         assert saved["document_id"] == item["document_id"]
@@ -286,19 +286,19 @@ def test_matching_saved_results_are_reused_and_config_changes_invalidate(tmp_pat
     provider = Provider()
     service = DemoService(provider, parsed_dir=tmp_path)
     service.extract_all()
-    assert provider.calls == 7
+    assert provider.calls == 13
     restarted = DemoService(provider, parsed_dir=tmp_path)
     restarted.catalog()
     restarted.analyze("frontend", resume_id="r1")
     restarted.analyze("frontend", resume_id="r2")
-    assert provider.calls == 7
+    assert provider.calls == 13
     restarted.resumes[0]["text"] += " changed"
     restarted.analyze("frontend", resume_id="r1")
-    assert provider.calls == 8
+    assert provider.calls == 14
     changed = dict(restarted.labels, hard_skill="Changed label")
     reconfigured = DemoService(provider, parsed_dir=tmp_path, labels=changed)
     reconfigured.analyze("frontend", resume_id="r1")
-    assert provider.calls == 12
+    assert provider.calls == 24
 
     from pydantic import BaseModel
 
@@ -309,14 +309,14 @@ def test_matching_saved_results_are_reused_and_config_changes_invalidate(tmp_pat
     runtime = DemoService(provider, parsed_dir=tmp_path, cache_dir=tmp_path / "runtime")
     runtime.catalog()
     runtime.analyze("frontend")
-    assert provider.calls == 19
+    assert provider.calls == 37
     again = DemoService(provider, parsed_dir=tmp_path, cache_dir=tmp_path / "runtime")
     again.catalog()
     again.analyze("frontend")
-    assert provider.calls == 19
+    assert provider.calls == 37
     provider.config.model = "second"
     again.analyze("frontend")
-    assert provider.calls == 23
+    assert provider.calls == 47
 
 
 def test_experience_is_summed_with_all_source_references():

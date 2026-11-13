@@ -104,6 +104,40 @@ def test_extraction_checks_evidence_and_reuses_cache(tmp_path):
     )
 
 
+def test_synthetic_resumes_are_cataloged_and_hash_attested(tmp_path):
+    import json
+    from pathlib import Path
+    from shutil import copytree
+
+    from vrscore.demo.service import load_case_documents
+
+    raw_dir = Path("public_data/raw")
+    metadata = json.loads(Path(".data/synthetic_resume_metadata.json").read_text())
+    vacancies, resumes = load_case_documents(raw_dir)
+    expected = {item["id"]: item for item in metadata}
+    synthetic = [resume for resume in resumes if resume["id"].startswith("synthetic_")]
+
+    assert len(vacancies) == 3
+    assert len(resumes) == 10
+    assert len(synthetic) == 6
+    assert {
+        resume["id"]: (resume["name"], resume["title"]) for resume in synthetic
+    } == {
+        identifier: (item["name"], item["title"])
+        for identifier, item in expected.items()
+    }
+    assert all(resume["synthetic"] is True for resume in synthetic)
+    assert all(
+        "synthetic" not in resume for resume in resumes if resume not in synthetic
+    )
+
+    altered = tmp_path / "raw"
+    copytree(raw_dir, altered)
+    (altered / "synthetic_r5.docx").write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="approved"):
+        load_case_documents(altered)
+
+
 def test_http_auth_and_cross_origin_denial():
     """The API is inaccessible without a token or from a hostile Origin."""
     import threading

@@ -7,7 +7,7 @@
     { id: 'office_service', label: 'Офис и сервис' }
   ];
   const GROUP_LABELS = Object.fromEntries(GROUPS_FALLBACK.map(x => [x.id, x.label]));
-  const state = { records: [], manifest: {}, groups: GROUPS_FALLBACK, kind: 'all', group: '', query: '', sort: 'source-date', favoritesOnly: false, favorites: new Set(), selectedId: '', tab: 'overview', theme: 'light', dataset: 'mini', limit: 100 };
+  const state = { records: [], pairs: [], manifest: {}, groups: GROUPS_FALLBACK, kind: 'all', group: '', query: '', sort: 'source-date', favoritesOnly: false, favorites: new Set(), selectedId: '', tab: 'overview', theme: 'light', dataset: 'mini', limit: 100 };
   let loadSequence = 0;
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -88,9 +88,10 @@
     if (r.kind === 'resume') title = title.replace(/([А-Яа-яЁё])\s*-\s*(?=[А-Яа-яЁё])/g, '$1 ');
     return title;
   }
-  function selectRecord(id, updateHash = true) {
+  function selectRecord(id, updateHash = true, revealMatches = false) {
     const r = recordById(id); if (!r) return;
-    state.selectedId = String(r.id); state.tab = 'overview';
+    const hasMatches = r.kind === 'resume' && state.pairs.some(pair => pair.resume_id === r.id);
+    state.selectedId = String(r.id); state.tab = revealMatches && hasMatches ? 'matches' : 'overview';
 
     if (updateHash) history.replaceState(null, '', `#${encodeURIComponent(r.id)}`);
     $('#reader-empty').hidden = true; $('#reader-content').hidden = false;
@@ -132,12 +133,46 @@
     const copy = el('button', 'action-button', 'Копировать текст'); copy.type = 'button'; copy.addEventListener('click', () => copyText(String(r.text || ''), 'Текст скопирован'));
     const download = el('button', 'action-button', 'Скачать JSON'); download.type = 'button'; download.addEventListener('click', () => downloadJSON(r)); actions.append(fav, copy, download); topline.append(kind, actions); detail.append(topline);
     detail.append(el('h2', 'detail-title', displayTitle(r)), el('div', 'detail-id', `${r.id} · ${groupLabel(r.sampling_group)} · ${dateLabel(dateValue(r))}`), el('hr', 'detail-rule'));
-    const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist'); [['overview','Обзор'],['text','Текст'],['json','JSON']].forEach(([id, label]) => { const b = el('button', 'tab-button', label); b.type = 'button'; b.setAttribute('role','tab'); b.setAttribute('aria-selected', String(state.tab === id)); b.id = `tab-${id}`; b.addEventListener('click', () => { state.tab = id; renderDetail(r); }); tabs.append(b); }); detail.append(tabs);
+    const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist'); const tabItems = [['overview','Обзор'],['text','Текст'],['json','JSON']]; if (r.kind === 'resume' && state.pairs.some(pair => pair.resume_id === r.id)) tabItems.splice(1, 0, ['matches','Подбор вакансий']); tabItems.forEach(([id, label]) => { const b = el('button', 'tab-button', label); b.type = 'button'; b.setAttribute('role','tab'); b.setAttribute('aria-selected', String(state.tab === id)); b.id = `tab-${id}`; b.addEventListener('click', () => { state.tab = id; renderDetail(r); }); tabs.append(b); }); detail.append(tabs);
     const panel = el('div', 'tab-panel'); panel.id = 'panel'; panel.setAttribute('role','tabpanel'); panel.setAttribute('aria-labelledby', `tab-${state.tab}`);
     if (state.tab === 'overview') renderOverview(r, panel);
+    else if (state.tab === 'matches') renderMatches(r, panel);
     else if (state.tab === 'text') { const tools = el('div','text-tools'); const b=el('button','action-button','Копировать текст');b.type='button';b.addEventListener('click',()=>copyText(String(r.text||''),'Текст скопирован'));tools.append(b);panel.append(tools, el('div','text-panel',String(r.text||'Не указано'))); if (Array.isArray(r.sections) && r.sections.length) { const section=el('section','summary-block');section.append(el('h3','section-heading','Секции источника')); const grid=el('div','field-grid'); r.sections.forEach(s=>{const label=`${escText(s.label)} · символы ${escText(s.start)}–${escText(s.end)}`;addField(grid,label, typeof s.source_field==='string'?s.source_field:'Не указано');});section.append(grid);panel.append(section); } }
     else { const tools=el('div','text-tools');const b=el('button','action-button','Копировать JSON');b.type='button';b.addEventListener('click',()=>copyText(JSON.stringify(r,null,2),'JSON скопирован'));tools.append(b);panel.append(tools,el('pre','json-panel',JSON.stringify(r,null,2))); }
     detail.append(panel); const source=el('details','source-card');source.append(el('summary','','Сведения об источнике и происхождении'));source.append(sourceGrid(r.source||{},r));detail.append(source);host.append(detail);
+    if (state.tab === 'matches' && location.hash === `#${encodeURIComponent(r.id)}`) panel.scrollIntoView({ block: 'start' });
+  }
+  function renderMatches(resume, panel) {
+    const pairs = state.pairs.filter(pair => pair.resume_id === resume.id).sort((a, b) => a.rank - b.rank);
+    const heading = el('h3', 'section-heading', `Ранжированные вакансии · ${pairs.length}`); panel.append(heading);
+    if (pairs.some(pair => String(pair.annotator).startsWith('ai_'))) panel.append(el('p', 'provenance-note', 'Оценки составлены ИИ-агентами и не проверены экспертами. Порядок внутри одного уровня релевантности условен.'));
+    const list = el('ol', 'pair-list');
+    pairs.forEach(pair => {
+      const vacancy = recordById(pair.vacancy_id); if (!vacancy) return;
+      const card = el('li', 'pair-card');
+      const top = el('div', 'pair-card-top');
+      top.append(el('span', 'pair-rank', `#${pair.rank}`), el('h4', 'pair-title', displayTitle(vacancy)), el('span', `relevance-grade grade-${pair.relevance}`, `Оценка ${pair.relevance}/3`));
+      card.append(top, el('p', 'pair-id', String(vacancy.id)));
+      const rationale = el('p', 'pair-rationale', pair.rationale || 'Обоснование не указано'); card.append(rationale);
+      if (pair.evidence.length) {
+        const evidence = el('ul', 'evidence-list'); evidence.setAttribute('aria-label', 'Цитаты, подтверждающие оценку');
+        pair.evidence.forEach(item => { const row = el('li', 'evidence-item'); row.append(el('blockquote', 'resume-quote', item.resume_quote), el('span', 'evidence-arrow', '↔'), el('blockquote', 'vacancy-quote', item.vacancy_quote)); evidence.append(row); });
+        card.append(evidence);
+      }
+      if (Array.isArray(pair.requirements) && pair.requirements.length) {
+        const statuses = { matched: 'Соответствует', partial: 'Частично', contradicted: 'Не соответствует', not_stated: 'Не указано' };
+        const details = el('details', 'source-card'); details.append(el('summary', '', `Разметка требований · ${pair.requirements.length}`));
+        pair.requirements.forEach(item => {
+          const section = el('section', 'summary-block');
+          section.append(el('strong', '', statuses[item.status] || item.status), el('p', '', item.requirement_quote), el('p', '', item.resume_quote || 'Подтверждение в резюме не указано'), el('p', '', item.rationale));
+          details.append(section);
+        });
+        card.append(details);
+      }
+      list.append(card);
+    });
+    if (!pairs.length) panel.append(el('p', 'empty-pairs', 'Для этого резюме нет размеченных вакансий.'));
+    else panel.append(list);
   }
   function copyText(text, message) { if (!text) { showToast('Нет текста для копирования'); return; } if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => showToast(message)).catch(() => fallbackCopy(text, message)); else fallbackCopy(text, message); }
   function fallbackCopy(text, message) { const area=el('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();try{document.execCommand('copy');showToast(message);}catch(_){showToast('Не удалось скопировать');}area.remove(); }
@@ -169,8 +204,8 @@
   async function loadDataset() {
     const sequence=++loadSequence, dataset=state.dataset;
     const host=$('#record-list');host.replaceChildren();const loading=el('div','loading-state');loading.append(el('span','spinner'),el('span','','Загрузка локального набора…'));host.append(loading);
-    try { const response=await fetch(`${API_URL}?dataset=${encodeURIComponent(dataset)}`,{headers:{Accept:'application/json'}});if(!response.ok)throw new Error(`Сервер вернул статус ${response.status}`);const data=await response.json();if(sequence!==loadSequence)return;if(!data||!Array.isArray(data.records))throw new Error('Ответ API не содержит список records');state.records=data.records;state.manifest=data.manifest||{};if(Array.isArray(data.groups)&&data.groups.length)state.groups=data.groups;$('#dataset-title').textContent=state.manifest.name||dataset;document.title=`${state.manifest.name||dataset} — ATLAS`;$('#dataset-version').textContent=`v ${state.manifest.version||'—'}`;$('#dataset-counts').textContent=`${state.manifest.actual?.resumes ?? '—'} · ${state.manifest.actual?.vacancies ?? '—'}`;renderGroups();renderSourceDetails();renderList();
-      const hash=decodeURIComponent(location.hash.slice(1));if(hash&&recordById(hash))selectRecord(hash,false);else if(state.records.length){const first=filteredRecords()[0];if(first)selectRecord(first.id,false);}
+    try { const response=await fetch(`${API_URL}?dataset=${encodeURIComponent(dataset)}`,{headers:{Accept:'application/json'}});if(!response.ok)throw new Error(`Сервер вернул статус ${response.status}`);const data=await response.json();if(sequence!==loadSequence)return;if(!data||!Array.isArray(data.records))throw new Error('Ответ API не содержит список records');state.records=data.records;state.pairs=Array.isArray(data.pairs)?data.pairs:[];state.manifest=data.manifest||{};if(Array.isArray(data.groups)&&data.groups.length)state.groups=data.groups;$('#dataset-title').textContent=state.manifest.name||dataset;document.title=`${state.manifest.name||dataset} — ATLAS`;$('#dataset-version').textContent=`v ${state.manifest.version||'—'}`;$('#dataset-counts').textContent=`${state.manifest.actual?.resumes ?? '—'} · ${state.manifest.actual?.vacancies ?? '—'}`;renderGroups();renderSourceDetails();renderList();
+      const hash=decodeURIComponent(location.hash.slice(1));if(hash&&recordById(hash))selectRecord(hash,false,true);else if(state.records.length){const first=filteredRecords()[0];if(first)selectRecord(first.id,false);}
     } catch(err) { if(sequence!==loadSequence)return;host.replaceChildren();const box=el('div','empty-list error-state');box.append(el('strong','','Не удалось загрузить данные'),el('span','',`${err.message}. Убедитесь, что локальный сервер запущен.`));const retry=el('button','','Повторить загрузку');retry.type='button';retry.addEventListener('click',loadDataset);box.append(retry);host.append(box);$('#list-summary').textContent='Нет соединения с API';$('#filtered-count').textContent='0'; }
   }
   async function loadCatalog() {
@@ -190,7 +225,7 @@
     $('#mobile-back').addEventListener('click',()=>{$('.browser').classList.remove('show-reader');$('#mobile-back').hidden=true;});
     $('#theme-toggle').addEventListener('click',()=>{state.theme=state.theme==='dark'?'light':'dark';if(state.theme==='dark')document.documentElement.dataset.theme='dark';else delete document.documentElement.dataset.theme;safeStorage.set('atlas-theme',state.theme);$('#theme-toggle').setAttribute('aria-label',state.theme==='dark'?'Включить светлую тему':'Включить тёмную тему');});
     document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName;const typing=['INPUT','TEXTAREA','SELECT'].includes(tag)||document.activeElement?.isContentEditable;if(typing)return;if(e.key==='/'){e.preventDefault();$('#search-input').focus();}else if(e.key.toLowerCase()==='t'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){$('#theme-toggle').click();}else if(e.key.toLowerCase()==='j'||e.key.toLowerCase()==='k'){const list=filteredRecords();if(!list.length)return;let idx=list.findIndex(r=>String(r.id)===state.selectedId);idx=e.key.toLowerCase()==='j'?Math.min(list.length-1,idx+1):Math.max(0,idx<0?0:idx-1);selectRecord(list[idx].id);}else if(e.key==='Escape'&&$('.browser').classList.contains('show-reader'))$('#mobile-back').click();});
-    window.addEventListener('hashchange',()=>{const id=decodeURIComponent(location.hash.slice(1));if(id&&recordById(id))selectRecord(id,false);});
+    window.addEventListener('hashchange',()=>{const id=decodeURIComponent(location.hash.slice(1));if(id&&recordById(id))selectRecord(id,false,true);});
     $('#dataset-select').addEventListener('change',e=>{state.dataset=e.target.value;state.records=[];state.manifest={};state.selectedId='';state.limit=100;readFavorites();const url=new URL(location.href);url.searchParams.set('dataset',state.dataset);url.hash='';history.replaceState(null,'',url);$('#reader-content').hidden=true;$('#reader-empty').hidden=false;$('.browser').classList.remove('show-reader');$('#mobile-back').hidden=true;clearFilters();loadDataset();});
     state.dataset=new URLSearchParams(location.search).get('dataset')||'mini';readFavorites();
     renderGroups();loadCatalog().then(loadDataset);

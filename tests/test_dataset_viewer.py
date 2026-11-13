@@ -55,6 +55,80 @@ def test_dataset_loading_and_validation(viewer, corpus):
         viewer.load_dataset(corpus)
 
 
+def test_optional_pairs_are_validated_and_returned(viewer, corpus):
+    """Pair records require real references, unique bounded ranks and labels."""
+    pairs = [
+        {
+            "resume_id": "resume_001",
+            "vacancy_id": "vacancy_001",
+            "rank": 1,
+            "relevance": 3,
+            "rationale": "Подходит",
+            "annotator": "reviewer",
+            "evidence": [{"resume_quote": "Python", "vacancy_quote": "Python"}],
+        }
+    ]
+    (corpus / "pairs.jsonl").write_text(json.dumps(pairs[0]), encoding="utf-8")
+    payload = viewer.load_dataset(corpus)
+    assert payload["pairs"] == pairs
+    assert "labels" not in payload["manifest"]
+
+    invalid = [
+        {**pairs[0], "vacancy_id": "missing"},
+        {**pairs[0], "rank": 21},
+        {**pairs[0], "relevance": True},
+        {**pairs[0], "evidence": [{"resume_quote": "x"}]},
+        {**pairs[0], "resume_id": "other", "vacancy_id": "vacancy_001"},
+    ]
+    for pair in invalid:
+        (corpus / "pairs.jsonl").write_text(json.dumps(pair), encoding="utf-8")
+        with pytest.raises(
+            ValueError, match="pair|Pair|rank|evidence|reference|resume"
+        ):
+            viewer.load_dataset(corpus)
+
+
+def test_pair_rank_and_identity_integrity(viewer, corpus):
+    """A resume cannot repeat a pair or a rank, and optional files may be absent."""
+    assert viewer.load_dataset(corpus)["pairs"] == []
+    (corpus / "vacancies.jsonl").write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"id": "vacancy_001", "kind": "vacancy", "title": "Разработчик"},
+                {"id": "vacancy_002", "kind": "vacancy", "title": "Аналитик"},
+            )
+        ),
+        encoding="utf-8",
+    )
+    manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
+    manifest["actual"]["vacancies"] = 2
+    (corpus / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    base = {
+        "resume_id": "resume_001",
+        "vacancy_id": "vacancy_001",
+        "rank": 1,
+        "relevance": 2,
+        "rationale": "",
+        "annotator": "reviewer",
+        "evidence": [],
+    }
+    (corpus / "pairs.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in (base, {**base, "rank": 2})),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Duplicate pair"):
+        viewer.load_dataset(corpus)
+    (corpus / "pairs.jsonl").write_text(
+        "\n".join(
+            json.dumps(row) for row in (base, {**base, "vacancy_id": "vacancy_002"})
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="rank"):
+        viewer.load_dataset(corpus)
+
+
 def test_http_isolation_and_security_headers(viewer, corpus, tmp_path):
     """Serve only allowed assets/API; do not disclose arbitrary local files."""
     assets = tmp_path / "assets"

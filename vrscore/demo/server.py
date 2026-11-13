@@ -216,6 +216,7 @@ def main(config: DictConfig):
                     gate_config=OmegaConf.to_container(config.first_gate, resolve=True),
                     cache_dir=config.server.cache_dir,
                     extra_vacancies_path=config.server.extra_vacancies_path,
+                    matching_gt_path=config.server.matching_gt_path,
                     vacancy_template=OmegaConf.to_container(
                         config.feature_extraction.vacancy_template, resolve=True
                     ),

@@ -65,6 +65,55 @@ def load_dataset(directory: Path) -> dict:
         if len(rows) != manifest["actual"][count_key]:
             raise ValueError(f"Dataset count differs from manifest: {filename}")
         records.extend(rows)
+    pairs_path = directory / "pairs.jsonl"
+    pairs = []
+    if pairs_path.exists():
+        resume_ids = {row["id"] for row in records if row["kind"] == "resume"}
+        vacancy_ids = {row["id"] for row in records if row["kind"] == "vacancy"}
+        seen_pairs, seen_ranks = set(), set()
+        for line in pairs_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            pair = json.loads(line)
+            if not isinstance(pair, dict):
+                raise ValueError("Pair records must be objects")
+            resume_id, vacancy_id = pair.get("resume_id"), pair.get("vacancy_id")
+            if (
+                not isinstance(resume_id, str)
+                or not isinstance(vacancy_id, str)
+                or resume_id not in resume_ids
+                or vacancy_id not in vacancy_ids
+            ):
+                raise ValueError("Pair references an unknown resume or vacancy")
+            rank = pair.get("rank")
+            if type(rank) is not int or not 1 <= rank <= 20:
+                raise ValueError("Pair rank must be an integer from 1 to 20")
+            pair_key = (resume_id, vacancy_id)
+            if pair_key in seen_pairs:
+                raise ValueError("Duplicate pair")
+            if (resume_id, rank) in seen_ranks:
+                raise ValueError("Pair rank must be unique for each resume")
+            seen_pairs.add(pair_key)
+            seen_ranks.add((resume_id, rank))
+            relevance = pair.get("relevance")
+            if type(relevance) is not int or not 0 <= relevance <= 3:
+                raise ValueError("Pair relevance must be an integer from 0 to 3")
+            if not isinstance(pair.get("rationale"), str) or not isinstance(
+                pair.get("annotator"), str
+            ):
+                raise ValueError("Pair rationale and annotator must be strings")
+            evidence = pair.get("evidence")
+            if not isinstance(evidence, list) or any(
+                not isinstance(item, dict)
+                or not isinstance(item.get("resume_quote"), str)
+                or not isinstance(item.get("vacancy_quote"), str)
+                for item in evidence
+            ):
+                raise ValueError(
+                    "Pair evidence must contain resume_quote and vacancy_quote strings"
+                )
+            pairs.append(pair)
+        pairs.sort(key=lambda pair: (pair["resume_id"], pair["rank"]))
     safe_manifest = {
         key: manifest[key]
         for key in [
@@ -97,7 +146,12 @@ def load_dataset(directory: Path) -> dict:
         }
     )
     groups = GROUPS + [{"id": group, "label": group} for group in additional]
-    return {"records": records, "manifest": safe_manifest, "groups": groups}
+    return {
+        "records": records,
+        "manifest": safe_manifest,
+        "groups": groups,
+        "pairs": pairs,
+    }
 
 
 def discover_datasets(root: Path, known_paths: set[Path]) -> dict[str, dict]:
@@ -122,6 +176,11 @@ def discover_datasets(root: Path, known_paths: set[Path]) -> dict[str, dict]:
                 file = (directory / filename).resolve(strict=True)
                 if not file.is_relative_to(root) or not file.is_file():
                     raise ValueError("Dataset file is outside the discovery root")
+            optional_pairs = directory / "pairs.jsonl"
+            if optional_pairs.exists():
+                file = optional_pairs.resolve(strict=True)
+                if not file.is_relative_to(root) or not file.is_file():
+                    raise ValueError("Dataset pairs file is outside the discovery root")
             discovered[directory.name] = load_dataset(directory)
             known_paths.add(resolved)
         except (OSError, ValueError, KeyError, TypeError) as error:

@@ -33,6 +33,42 @@ RESUME_FILES = (
     ("r2", "Петров Иван_резюме 2.docx", "Петров Иван", "Frontend-разработчик"),
     ("r3", "Петрова Лилия_резюме 4.docx", "Петрова Лилия", "Бухгалтер"),
     ("r4", "Семенов Алексей _резюме 3.docx", "Семенов Алексей", "Frontend-разработчик"),
+    (
+        "synthetic_r5",
+        "synthetic_r5.docx",
+        "Алина Воронцова",
+        "Ведущий специалист по закупкам (223-ФЗ)",
+    ),
+    (
+        "synthetic_r6",
+        "synthetic_r6.docx",
+        "Тимур Беляев",
+        "Junior Fullstack-разработчик",
+    ),
+    (
+        "synthetic_r7",
+        "synthetic_r7.docx",
+        "Марина Сафонова",
+        "Биостатистик / биоинформатик",
+    ),
+    (
+        "synthetic_r8",
+        "synthetic_r8.docx",
+        "Денис Климов",
+        "Инженер по робототехнике: автономное движение платформы",
+    ),
+    (
+        "synthetic_r9",
+        "synthetic_r9.docx",
+        "Екатерина Миронова",
+        "Менеджер научных проектов",
+    ),
+    (
+        "synthetic_r10",
+        "synthetic_r10.docx",
+        "Илья Громов",
+        "Младший научный сотрудник (молекулярный биолог)",
+    ),
 )
 
 # Only the exact files attested by the user may be sent to the external API.
@@ -58,13 +94,31 @@ APPROVED_HASHES = {
     "Семенов Алексей _резюме 3.docx": (
         "d12ab658081db26f2dca21a71630729dc4df247a25615d802ddebd1c5350d0f2"
     ),
+    "synthetic_r5.docx": (
+        "da1b0634894aefe0217ceb188d3f1cfc8d622f9f095d1281816f310e2b8054f0"
+    ),
+    "synthetic_r6.docx": (
+        "a56e6a6c596e24fd73248da8cc06d71e2616a7f9bc13d497ca428960f7b0d76b"
+    ),
+    "synthetic_r7.docx": (
+        "ed9eee6734b966ede904937a4fef232f039d2fed00a8db36ddc82aa75f13eb71"
+    ),
+    "synthetic_r8.docx": (
+        "0eb56dcce2d4c0f526e55514d9bf44350ca9ca8b9f8811c75fe9753f357d1a5b"
+    ),
+    "synthetic_r9.docx": (
+        "da1d3bba602485b2045e994d65df16418c2e9c0b22dbabaf0d3b73b0493f6977"
+    ),
+    "synthetic_r10.docx": (
+        "2b361727ac1d46eacfa8f79cc431404a05dab6a6046a7bfe670150c52f224acc"
+    ),
 }
 
 
 def load_case_documents(
     directory: Path, *, documents=None
 ) -> tuple[list[dict], list[dict]]:
-    """Read the seven explicitly approved case DOCX files without truncation."""
+    """Read the explicitly approved case DOCX files without truncation."""
     reader = DocxReader()
 
     def read(filename: str) -> dict:
@@ -90,7 +144,13 @@ def load_case_documents(
         )
         vacancies.append({"id": identifier, "title": title, **document})
     resumes = [
-        {"id": identifier, "name": name, "title": title, **read(filename)}
+        {
+            "id": identifier,
+            "name": name,
+            "title": title,
+            **({"synthetic": True} if identifier.startswith("synthetic_") else {}),
+            **read(filename),
+        }
         for identifier, filename, name, title in RESUME_FILES
     ]
     return vacancies, resumes
@@ -184,6 +244,7 @@ class DemoService:
         parsed_dir=None,
         cache_dir=None,
         extra_vacancies_path=None,
+        matching_gt_path=None,
     ):
         self.provider = provider
         self.gate_config = gate_config
@@ -238,6 +299,12 @@ class DemoService:
         self.extra_vacancies = load_extra_vacancies(extra_vacancies_path)
         if {v["id"] for v in self.extra_vacancies} & {v["id"] for v in self.vacancies}:
             raise ValueError("Duplicate vacancy ID across corpora")
+        self.matching_gt_path = Path(matching_gt_path) if matching_gt_path else None
+        self.matching_reference = (
+            self._load_matching_reference(self.matching_gt_path)
+            if self.matching_gt_path and self.matching_gt_path.exists()
+            else None
+        )
         self.parsed_dir = (
             Path(parsed_dir) if parsed_dir else project / "public_data" / "parsed"
         )
@@ -246,6 +313,99 @@ class DemoService:
         self.cache = dict(self.parsed)
         self.vacancy_failures = set()
         self.lock = Lock()
+
+    @staticmethod
+    def _load_matching_reference(directory):
+        """Load the fixed AI-labeled reference without invoking extraction or gates."""
+        directory = Path(directory)
+        manifest_path = directory / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(f"Matching reference manifest not found: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        tables = {}
+        for name in ("pairs.jsonl", "vacancies.jsonl", "resumes.jsonl"):
+            path = directory / name
+            raw = path.read_bytes()
+            expected_hash = manifest.get("sha256", {}).get(name)
+            if not expected_hash or hashlib.sha256(raw).hexdigest() != expected_hash:
+                raise ValueError(f"Matching reference checksum mismatch: {name}")
+            tables[name] = [
+                json.loads(line) for line in raw.decode("utf-8").splitlines()
+            ]
+        counts = manifest.get("actual", {})
+        if (
+            len(tables["pairs.jsonl"]) != counts.get("pairs")
+            or len(tables["vacancies.jsonl"]) != counts.get("vacancies")
+            or len(tables["resumes.jsonl"]) != counts.get("resumes")
+        ):
+            raise ValueError("Matching reference counts do not match manifest")
+        return {
+            "manifest": manifest,
+            "pairs": tables["pairs.jsonl"],
+            "vacancies": {item["id"]: item for item in tables["vacancies.jsonl"]},
+            "resumes": {item["id"]: item for item in tables["resumes.jsonl"]},
+        }
+
+    def reference_order(self, resume_id):
+        """Return AI-annotated ranks separately from vacancies lacking labels."""
+        if self.matching_reference is None:
+            raise ValueError("Matching reference is not configured")
+        if resume_id not in {resume["id"] for resume in self.resumes}:
+            raise ValueError("Unknown resume")
+        available = {
+            item["id"]: item for item in [*self.vacancies, *self.extra_vacancies]
+        }
+        if resume_id not in self.matching_reference["resumes"]:
+            raise ValueError("Resume is not covered by the matching reference")
+        resume = next(item for item in self.resumes if item["id"] == resume_id)
+        frozen_resume = self.matching_reference["resumes"][resume_id]
+        if hashlib.sha256(resume["text"].encode()).hexdigest() != frozen_resume.get(
+            "text_sha256"
+        ):
+            raise ValueError("Resume text changed since reference annotation")
+        pairs = [
+            pair
+            for pair in self.matching_reference["pairs"]
+            if pair.get("resume_id") == resume_id
+        ]
+        pairs.sort(key=lambda pair: pair.get("rank", 0))
+        if len(pairs) != 20 or len({pair.get("vacancy_id") for pair in pairs}) != 20:
+            raise ValueError(
+                "Matching reference must contain 20 unique ranked vacancies per resume"
+            )
+        ranked_ids = {pair["vacancy_id"] for pair in pairs}
+        if not ranked_ids <= available.keys():
+            raise ValueError(
+                "Matching reference vacancy is missing from the demo catalog"
+            )
+        ranked = []
+        for pair in pairs:
+            source = available[pair["vacancy_id"]]
+            frozen = self.matching_reference["vacancies"].get(pair["vacancy_id"], {})
+            if hashlib.sha256(source["text"].encode()).hexdigest() != frozen.get(
+                "text_sha256"
+            ):
+                raise ValueError("Vacancy text changed since reference annotation")
+            ranked.append(
+                {
+                    "vacancy_id": pair["vacancy_id"],
+                    "title": source["title"],
+                    "rank": pair["rank"],
+                    "relevance": pair["relevance"],
+                    "rationale": pair.get("rationale", ""),
+                }
+            )
+        unannotated = [
+            {"id": item["id"], "title": item["title"]}
+            for item in [*self.vacancies, *self.extra_vacancies]
+            if item["id"] not in ranked_ids
+        ]
+        return {
+            "resume_id": resume_id,
+            "disclosure": "AI-labeled reference; not an algorithm prediction.",
+            "ranked": ranked,
+            "unannotated": unannotated,
+        }
 
     def cache_key(self, document, kind):
         """Hash document identity and effective extraction configuration."""
@@ -537,17 +697,14 @@ class DemoService:
         with self.lock:
             for resume in self.resumes:
                 self._cached_extraction(resume, "resume")
-            # The positions are illustrative, not a matching algorithm.
-            order = {
-                "frontend": ["r2", "r4", "r1", "r3"],
-                "accountant": ["r3", "r1", "r2", "r4"],
-                "curator": ["r1", "r2", "r3", "r4"],
-            }[vacancy_id]
-            by_id = {r["id"]: r for r in self.resumes}
             return {
-                "mock": True,
+                "mock": False,
+                "reference_order": (
+                    self.reference_order(resume_id or self.resumes[0]["id"])
+                    if self.extra_vacancies and self.matching_reference
+                    else None
+                ),
                 "resumes": [
-                    {**by_id[rid], **self.cache[rid], "rank": i + 1}
-                    for i, rid in enumerate(order)
+                    {**resume, **self.cache[resume["id"]]} for resume in self.resumes
                 ],
             }
