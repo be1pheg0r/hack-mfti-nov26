@@ -1,0 +1,78 @@
+# Изменяйте значения через Hydra overrides перед созданием контрактов.
+vocabulary:
+  importance:
+    strict: Прямо обозначено как обязательное требование.
+    good2have: Названо преимуществом или дополнительным плюсом.
+    honestly_desired: Прямо названо желательным или предпочтительным.
+  categories:
+    education:
+      description: Уровень или вид образования.
+      value_type: enum
+      values:
+        secondary_general: Среднее общее образование.
+        secondary_vocational: Среднее профессиональное образование.
+        higher: Высшее образование без уточнения степени.
+        bachelor: Бакалавриат.
+        specialist: Специалитет.
+        master: Магистратура.
+        postgraduate: Аспирантура или эквивалентная ступень.
+        special: Специальное образование без уточнения уровня.
+    education_specialization:
+      description: Направление или специальность образования.
+      value_type: text
+    experience:
+      description: Минимальный опыт работы в годах; область указывается в context.
+      value_type: number
+    hard_skill:
+      description: Профессиональный навык, технология или инструмент.
+      value_type: text
+    soft_skill:
+      description: Навык взаимодействия или организации работы.
+      value_type: text
+    language:
+      description: Иностранный или другой язык; уровень указывается в context.
+      value_type: text
+    certification:
+      description: Сертификат, разрешение или иная квалификация.
+      value_type: text
+    work_schedule:
+      description: Режим или график работы, необходимый для вакансии.
+      value_type: enum
+      values:
+        full_time: Полный рабочий день.
+        part_time: Неполный рабочий день.
+        shift: Сменный график.
+        flexible: Гибкий график.
+        rotation: Вахтовый метод.
+    work_format:
+      description: Формат организации рабочего места.
+      value_type: enum
+      values:
+        on_site: Работа на месте.
+        remote: Удалённая работа.
+        hybrid: Гибридный формат.
+    employment_type:
+      description: Требуемый тип занятости.
+      value_type: enum
+      values:
+        full_time: Полная занятость.
+        part_time: Частичная занятость.
+        internship: Стажировка.
+        project: Проектная работа.
+        contract: Работа по договору.
+    language_level:
+      description: Уровень языка по общеевропейской шкале; язык указан в context.
+      value_type: enum
+      values:
+        a1: A1.
+        a2: A2.
+        b1: B1.
+        b2: B2.
+        c1: C1.
+        c2: C2.
+    location:
+      description: Требование к месту работы или географической доступности.
+      value_type: text
+    other:
+      description: Явное требование, которое не относится к другим категориям.
+      value_type: text
