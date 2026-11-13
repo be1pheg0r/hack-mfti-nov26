@@ -2,7 +2,8 @@
 
 import math
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from numbers import Real
 from typing import Any
 
 from pydantic import Field
@@ -40,6 +41,47 @@ class EvaluationResult(BenchmarkContract):
             for name, value in case.metrics.items():
                 values[name].append(value)
         return {name: sum(items) / len(items) for name, items in values.items()}
+
+
+def ndcg_at_k(
+    relevance: Mapping[Any, Real], ranked_ids: Sequence[Any], k: int = 5
+) -> float | None:
+    """Compute NDCG@k for ranked IDs and an explicit graded-relevance mapping.
+
+    Gains are ``2**relevance - 1`` and discounts are ``log2(rank + 1)``.
+    The ideal ranking is formed from all supplied relevance judgments, while
+    missing ranked items simply contribute no gain. Returns ``None`` when the
+    ideal DCG is zero.
+    """
+    if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+        raise ValueError("k must be a positive integer")
+
+    scores: dict[Any, float] = {}
+    for item_id, value in relevance.items():
+        if isinstance(value, bool) or not isinstance(value, Real):
+            raise ValueError("Relevance values must be finite nonnegative numbers")
+        score = float(value)
+        if not math.isfinite(score) or score < 0:
+            raise ValueError("Relevance values must be finite nonnegative numbers")
+        scores[item_id] = score
+
+    seen = set()
+    for item_id in ranked_ids:
+        if item_id not in scores:
+            raise ValueError("Ranked IDs must be present in the relevance mapping")
+        if item_id in seen:
+            raise ValueError("Ranked IDs must be unique")
+        seen.add(item_id)
+
+    def dcg(values: Sequence[float]) -> float:
+        return sum(
+            (math.exp2(value) - 1) / math.log2(rank + 2)
+            for rank, value in enumerate(values[:k])
+        )
+
+    actual = dcg([scores[item_id] for item_id in ranked_ids])
+    ideal = dcg(sorted(scores.values(), reverse=True))
+    return actual / ideal if ideal else None
 
 
 def evaluate(

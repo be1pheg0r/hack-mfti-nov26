@@ -1,0 +1,10 @@
+# All fields can be overridden through Hydra composition before index creation.
+name: exact_skills
+categories: [hard_skill, soft_skill]
+# Optional, curated exceptions only; all extracted skills are indexed regardless.
+aliases: {}
+importance_weights:
+  strict: 1.0
+  good2have: 1.0
+  honestly_desired: 1.0
+  unknown: 1.0

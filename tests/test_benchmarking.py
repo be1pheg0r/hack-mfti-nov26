@@ -1,9 +1,53 @@
 """Reusable benchmark contracts and runner behavior."""
 
+import math
+
 import pytest
 from pydantic import ValidationError
 
-from vrscore.benchmarking import BenchmarkSpec, run_benchmark
+from vrscore.benchmarking import BenchmarkSpec, ndcg_at_k, run_benchmark
+
+
+def test_ndcg_uses_exponential_gain_and_log2_discount():
+    """Score graded relevance using the standard NDCG gain and discount."""
+    relevance = {"high": 3, "mid": 1, "low": 0}
+
+    score = ndcg_at_k(relevance, ["mid", "high"], k=2)
+
+    expected_dcg = (2**1 - 1) / math.log2(2) + (2**3 - 1) / math.log2(3)
+    ideal_dcg = (2**3 - 1) / math.log2(2) + (2**1 - 1) / math.log2(3)
+    assert score == pytest.approx(expected_dcg / ideal_dcg)
+
+
+def test_ndcg_uses_full_judgments_for_ideal_with_incomplete_ranking():
+    """Omitted items still determine the ideal DCG at arbitrary positive k."""
+    score = ndcg_at_k({"top": 3, "middle": 2, "shown": 1}, ["shown"], k=8)
+
+    ideal_dcg = (2**3 - 1) / math.log2(2)
+    ideal_dcg += (2**2 - 1) / math.log2(3) + (2**1 - 1) / math.log2(4)
+    assert score == pytest.approx((2**1 - 1) / ideal_dcg)
+
+
+def test_ndcg_returns_none_when_ideal_gain_is_zero():
+    """Avoid dividing by zero when every supplied relevance is zero."""
+    assert ndcg_at_k({"a": 0, "b": 0}, ["b"], k=1) is None
+
+
+@pytest.mark.parametrize(
+    ("relevance", "ranked_ids", "k"),
+    [
+        ({"a": 1}, ["a", "a"], 1),
+        ({"a": 1}, ["unknown"], 1),
+        ({"a": -1}, ["a"], 1),
+        ({"a": float("nan")}, ["a"], 1),
+        ({"a": 1}, ["a"], 0),
+        ({"a": 1}, ["a"], 1.5),
+    ],
+)
+def test_ndcg_rejects_invalid_inputs(relevance, ranked_ids, k):
+    """Reject invalid judgments, rankings, and cutoffs rather than masking them."""
+    with pytest.raises(ValueError):
+        ndcg_at_k(relevance, ranked_ids, k=k)
 
 
 def test_runner_excludes_warmups_records_failures_and_summarizes():
