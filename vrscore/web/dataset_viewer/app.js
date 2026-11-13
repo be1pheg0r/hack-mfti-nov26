@@ -133,14 +133,34 @@
     const copy = el('button', 'action-button', 'Копировать текст'); copy.type = 'button'; copy.addEventListener('click', () => copyText(String(r.text || ''), 'Текст скопирован'));
     const download = el('button', 'action-button', 'Скачать JSON'); download.type = 'button'; download.addEventListener('click', () => downloadJSON(r)); actions.append(fav, copy, download); topline.append(kind, actions); detail.append(topline);
     detail.append(el('h2', 'detail-title', displayTitle(r)), el('div', 'detail-id', `${r.id} · ${groupLabel(r.sampling_group)} · ${dateLabel(dateValue(r))}`), el('hr', 'detail-rule'));
-    const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist'); const tabItems = [['overview','Обзор'],['text','Текст'],['json','JSON']]; if (r.kind === 'resume' && state.pairs.some(pair => pair.resume_id === r.id)) tabItems.splice(1, 0, ['matches','Подбор вакансий']); tabItems.forEach(([id, label]) => { const b = el('button', 'tab-button', label); b.type = 'button'; b.setAttribute('role','tab'); b.setAttribute('aria-selected', String(state.tab === id)); b.id = `tab-${id}`; b.addEventListener('click', () => { state.tab = id; renderDetail(r); }); tabs.append(b); }); detail.append(tabs);
+    const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'tablist'); const tabItems = [['overview','Обзор'],['text','Текст'],['json','JSON']]; if (r.llm_extraction) tabItems.splice(1, 0, ['llm','Навыки LLM']); if (r.kind === 'resume' && state.pairs.some(pair => pair.resume_id === r.id)) tabItems.splice(1, 0, ['matches','Подбор вакансий']); tabItems.forEach(([id, label]) => { const b = el('button', 'tab-button', label); b.type = 'button'; b.setAttribute('role','tab'); b.setAttribute('aria-selected', String(state.tab === id)); b.id = `tab-${id}`; b.addEventListener('click', () => { state.tab = id; renderDetail(r); }); tabs.append(b); }); detail.append(tabs);
     const panel = el('div', 'tab-panel'); panel.id = 'panel'; panel.setAttribute('role','tabpanel'); panel.setAttribute('aria-labelledby', `tab-${state.tab}`);
     if (state.tab === 'overview') renderOverview(r, panel);
     else if (state.tab === 'matches') renderMatches(r, panel);
+    else if (state.tab === 'llm') renderLLMSkills(r, panel);
     else if (state.tab === 'text') { const tools = el('div','text-tools'); const b=el('button','action-button','Копировать текст');b.type='button';b.addEventListener('click',()=>copyText(String(r.text||''),'Текст скопирован'));tools.append(b);panel.append(tools, el('div','text-panel',String(r.text||'Не указано'))); if (Array.isArray(r.sections) && r.sections.length) { const section=el('section','summary-block');section.append(el('h3','section-heading','Секции источника')); const grid=el('div','field-grid'); r.sections.forEach(s=>{const label=`${escText(s.label)} · символы ${escText(s.start)}–${escText(s.end)}`;addField(grid,label, typeof s.source_field==='string'?s.source_field:'Не указано');});section.append(grid);panel.append(section); } }
     else { const tools=el('div','text-tools');const b=el('button','action-button','Копировать JSON');b.type='button';b.addEventListener('click',()=>copyText(JSON.stringify(r,null,2),'JSON скопирован'));tools.append(b);panel.append(tools,el('pre','json-panel',JSON.stringify(r,null,2))); }
     detail.append(panel); const source=el('details','source-card');source.append(el('summary','','Сведения об источнике и происхождении'));source.append(sourceGrid(r.source||{},r));detail.append(source);host.append(detail);
     if (state.tab === 'matches' && location.hash === `#${encodeURIComponent(r.id)}`) panel.scrollIntoView({ block: 'start' });
+  }
+  function renderLLMSkills(record, panel) {
+    const result = record.llm_extraction;
+    const categories = { hard_skill: 'Профессиональный навык', soft_skill: 'Личное качество', language: 'Язык', language_level: 'Уровень языка' };
+    const entities = result.entities.filter(entity => Object.hasOwn(categories, entity.category));
+    panel.append(el('h3', 'section-heading', `Навыки, извлечённые LLM · ${entities.length}`));
+    panel.append(el('p', 'provenance-note', 'Автоматическое извлечение: не экспертная разметка и не гарантия полноты. Цитаты приведены из исходного текста.'));
+    if (!entities.length) { panel.append(el('p', 'missing', 'Модель не извлекла навыков из этого документа.')); return; }
+    const list = el('div', 'pair-list');
+    entities.forEach(entity => {
+      const card = el('section', 'pair-card');
+      const value = entity.display_value ?? entity.value ?? 'Не указано';
+      card.append(el('h4', 'pair-title', String(value)), el('p', 'pair-id', `${categories[entity.category]}${entity.polarity === 'absent' ? ' · Явное отрицание' : ''}`));
+      if (entity.context) card.append(el('p', 'pair-rationale', String(entity.context)));
+      const sources = Array.isArray(entity.sources) ? entity.sources : [entity];
+      sources.forEach(source => { if (source.evidence) card.append(el('blockquote', 'resume-quote', String(source.evidence))); });
+      list.append(card);
+    });
+    panel.append(list);
   }
   function renderMatches(resume, panel) {
     const pairs = state.pairs.filter(pair => pair.resume_id === resume.id).sort((a, b) => a.rank - b.rank);

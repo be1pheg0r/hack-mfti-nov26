@@ -1,5 +1,6 @@
 """Read-only, explicitly scoped HTTP serving for the private dataset explorer."""
 
+import hashlib
 import ipaddress
 import json
 import logging
@@ -25,6 +26,67 @@ ASSETS = {
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
+
+
+def _join_extractions(directory: Path, manifest: dict, records: list[dict]) -> None:
+    """Attach verified model predictions without modifying stored source records."""
+    path = directory / "llm_extractions.jsonl"
+    if not path.exists():
+        if path.name in manifest.get("sha256", {}):
+            raise ValueError("Extraction sidecar declared but missing")
+        return
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != manifest.get("sha256", {}).get(path.name):
+        raise ValueError("Extraction sidecar checksum mismatch")
+    by_id = {record["id"]: record for record in records}
+    seen = set()
+    for line in raw.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if not isinstance(item, dict) or item.get("id") not in by_id:
+            raise ValueError("Extraction references an unknown document")
+        record = by_id[item["id"]]
+        if item["id"] in seen:
+            raise ValueError("Extraction document duplicated")
+        seen.add(item["id"])
+        identity = ("kind", "document_id", "text_version", "text_sha256")
+        if (
+            any(item.get(key) != record.get(key) for key in identity)
+            or not isinstance(record.get("text"), str)
+            or hashlib.sha256(record["text"].encode("utf-8")).hexdigest()
+            != item.get("text_sha256")
+        ):
+            raise ValueError("Extraction document identity or text changed")
+        entities = item.get("entities")
+        if item.get("status") != "model_prediction_not_gold" or not isinstance(
+            entities, list
+        ):
+            raise ValueError("Extraction must contain explicitly labeled predictions")
+        for entity in entities:
+            if not isinstance(entity, dict):
+                raise ValueError("Extraction entity must be an object")
+            sources = entity.get("sources", [entity])
+            if not isinstance(sources, list) or not sources:
+                raise ValueError("Extraction evidence is missing")
+            for source in sources:
+                if not isinstance(source, dict):
+                    raise ValueError("Extraction evidence is invalid")
+                start, end = source.get("start"), source.get("end")
+                if (
+                    type(start) is not int
+                    or type(end) is not int
+                    or not 0 <= start < end <= len(record["text"])
+                    or record["text"][start:end] != source.get("evidence")
+                    or source.get("document_id") != record["document_id"]
+                    or source.get("text_version") != record["text_version"]
+                ):
+                    raise ValueError("Extraction evidence does not match document")
+        record["llm_extraction"] = {
+            key: value
+            for key, value in item.items()
+            if key not in {"id", "kind", "document_id", "text_version"}
+        }
 
 
 def load_dataset(directory: Path) -> dict:
@@ -65,6 +127,7 @@ def load_dataset(directory: Path) -> dict:
         if len(rows) != manifest["actual"][count_key]:
             raise ValueError(f"Dataset count differs from manifest: {filename}")
         records.extend(rows)
+    _join_extractions(directory, manifest, records)
     pairs_path = directory / "pairs.jsonl"
     pairs = []
     if pairs_path.exists():
@@ -181,6 +244,11 @@ def discover_datasets(root: Path, known_paths: set[Path]) -> dict[str, dict]:
                 file = optional_pairs.resolve(strict=True)
                 if not file.is_relative_to(root) or not file.is_file():
                     raise ValueError("Dataset pairs file is outside the discovery root")
+            optional_extractions = directory / "llm_extractions.jsonl"
+            if optional_extractions.exists():
+                file = optional_extractions.resolve(strict=True)
+                if not file.is_relative_to(root) or not file.is_file():
+                    raise ValueError("Dataset extraction is outside the discovery root")
             discovered[directory.name] = load_dataset(directory)
             known_paths.add(resolved)
         except (OSError, ValueError, KeyError, TypeError) as error:

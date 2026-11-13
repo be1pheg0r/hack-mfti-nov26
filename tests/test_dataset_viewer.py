@@ -55,6 +55,52 @@ def test_dataset_loading_and_validation(viewer, corpus):
         viewer.load_dataset(corpus)
 
 
+def test_llm_extraction_sidecar_is_grounded_and_separate(viewer, corpus):
+    """Optional predictions join by identity and reject stale or forged evidence."""
+    import hashlib
+
+    text = "Python 3.12"
+    record = {
+        "id": "resume_001", "kind": "resume", "title": "fixture", "text": text,
+        "document_id": "doc-1", "text_version": "v1",
+        "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    }
+    (corpus / "resumes.jsonl").write_text(json.dumps(record), encoding="utf-8")
+    row = {
+        "id": "resume_001", "kind": "resume", "document_id": "doc-1",
+        "text_version": "v1", "text_sha256": record["text_sha256"],
+        "status": "model_prediction_not_gold", "skill_categories": ["hard_skill"],
+        "entities": [{"category": "hard_skill", "value": "Python", "start": 0,
+                      "end": 6, "evidence": "Python", "document_id": "doc-1",
+                      "text_version": "v1"}],
+    }
+    manifest = json.loads((corpus / "manifest.json").read_text())
+
+    def save(rows):
+        raw = ("\n".join(json.dumps(x) for x in rows) + "\n").encode()
+        (corpus / "llm_extractions.jsonl").write_bytes(raw)
+        manifest["sha256"] = {"llm_extractions.jsonl": hashlib.sha256(raw).hexdigest()}
+        (corpus / "manifest.json").write_text(json.dumps(manifest))
+
+    save([row])
+    data = viewer.load_dataset(corpus)
+    assert data["records"][0]["llm_extraction"]["entities"][0]["value"] == "Python"
+    assert "llm_extraction" not in json.loads((corpus / "resumes.jsonl").read_text())
+    for invalid in (
+        [{**row, "text_sha256": "changed"}],
+        [{**row, "entities": [{**row["entities"][0], "evidence": "forged"}]}],
+        [row, row],
+        [{**row, "id": "unknown"}],
+    ):
+        save(invalid)
+        with pytest.raises(ValueError, match="[Ee]xtraction"):
+            viewer.load_dataset(corpus)
+    save([row])
+    (corpus / "llm_extractions.jsonl").unlink()
+    with pytest.raises(ValueError, match="[Ee]xtraction"):
+        viewer.load_dataset(corpus)
+
+
 def test_optional_pairs_are_validated_and_returned(viewer, corpus):
     """Pair records require real references, unique bounded ranks and labels."""
     pairs = [
