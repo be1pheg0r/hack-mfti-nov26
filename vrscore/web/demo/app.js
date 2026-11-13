@@ -80,7 +80,8 @@
   }
   function decisionHtml(decision) {
     const status = statusOf(decision.status);
-    const [label, className] = decision.missing ? ["Не проверено", "unknown"] : decision.reason === "resume_not_stated" ? ["Информация в резюме не указана", "unknown"] : STATUS[status];
+    const missingLabels = {vacancy_not_stated: "В вакансии не указано · пройдено", resume_not_stated: "В резюме не указано · пройдено", vacancy_and_resume_not_stated: "Не указано в вакансии и резюме · пройдено"};
+    const [label, className] = decision.missing ? ["Не проверено", "unknown"] : missingLabels[decision.reason] ? [missingLabels[decision.reason], "pass"] : STATUS[status];
     return `<details class="gate-rule gate-rule-${className}" ${!decision.missing && status !== "pass" ? "open" : ""}><summary><span>${escapeHtml(FILTER_NAMES[decision.filter] || decision.filter || "Правило")}</span><span class="gate-pill gate-pill-${className}">${label}</span></summary><div class="gate-rule-body"><p>${escapeHtml(explanationText(decision))}</p>${decision.difference !== undefined && decision.difference !== null ? `<p><strong>Различие:</strong> ${escapeHtml(decision.difference)}</p>` : ""}${entities("Требование вакансии", decision.requirement)}${entities("Данные резюме", decision.candidate)}</div></details>`;
   }
   function render(payload) {

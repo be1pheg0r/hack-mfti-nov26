@@ -434,15 +434,40 @@ class Gate:
     def evaluate(self, context: RuleContext) -> dict:
         decisions = []
         for rule in self.rules:
-            result = rule.evaluate(context)
+            requirements: list[dict] = []
+            candidates: list[dict] = []
             category = context.config["filters"].get("categories", {}).get(rule.name)
-            if (
-                category
-                and result.get("status") == "unknown"
-                and not _entities(context.resume, category)
+            if category and isinstance(
+                rule, (ExperienceRule, EducationRule, WorkFormatRule, WorkScheduleRule)
             ):
-                result["reason"] = "resume_not_stated"
-                result["explanation"] = "Информация в резюме не указана."
+                requirements = _entities(context.vacancy, category)
+                candidates = _entities(context.resume, category)
+                vacancy_missing = not requirements or all(
+                    entity.get("defaulted") for entity in requirements
+                )
+                resume_missing = not candidates
+            else:
+                vacancy_missing = resume_missing = False
+            if vacancy_missing or resume_missing:
+                if vacancy_missing and resume_missing:
+                    reason = "vacancy_and_resume_not_stated"
+                    explanation = "Информация не указана в вакансии и резюме."
+                elif vacancy_missing:
+                    reason = "vacancy_not_stated"
+                    explanation = "Требование в вакансии не указано."
+                else:
+                    reason = "resume_not_stated"
+                    explanation = "Информация в резюме не указана."
+                result = _decision(
+                    rule.name,
+                    "pass",
+                    reason=reason,
+                    explanation=explanation,
+                    requirement=requirements,
+                    candidate=candidates,
+                )
+            else:
+                result = rule.evaluate(context)
             if result.get("status") not in {"pass", "fail", "unknown"}:
                 raise ValueError(f"Rule {rule.name} returned an invalid status")
             decisions.append(result)
