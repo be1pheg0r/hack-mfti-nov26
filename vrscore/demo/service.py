@@ -308,6 +308,7 @@ class DemoService:
         postprocessing=None,
         vacancy_template=None,
         gate_config=None,
+        report_config=None,
         parsed_dir=None,
         cache_dir=None,
         extra_vacancies_path=None,
@@ -320,6 +321,7 @@ class DemoService:
     ):
         self.provider = provider
         self.gate_config = gate_config
+        self.report_config = report_config
         if (
             isinstance(shortlist_size, bool)
             or not isinstance(shortlist_size, int)
@@ -805,7 +807,9 @@ class DemoService:
                     if vacancy in self.extra_vacancies
                     else self._available_vacancy(vacancy)
                 )
-                report = build_report({**extracted, "id": vacancy["id"]}, features)
+                report = build_report(
+                    {**extracted, "id": vacancy["id"]}, features, self.report_config
+                )
                 report["title"] = vacancy["title"]
                 report["extraction_error"] = bool(extracted.get("extraction_error"))
                 reports.append(report)

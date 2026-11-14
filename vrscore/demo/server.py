@@ -415,6 +415,7 @@ def _make_service(config, client):
             config.feature_extraction.postprocessing, resolve=True
         ),
         gate_config=OmegaConf.to_container(config.first_gate, resolve=True),
+        report_config=OmegaConf.to_container(config.report, resolve=True),
         cache_dir=config.server.cache_dir,
         extra_vacancies_path=config.server.extra_vacancies_path,
         matching_gt_path=config.server.matching_gt_path,

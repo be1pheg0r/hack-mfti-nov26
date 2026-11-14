@@ -20,13 +20,13 @@ def test_report_distinguishes_evidence_negation_and_missing():
         {"id": "r", "entities": [fact("Python", "present"), fact("Vue 3", "absent")]},
     )
     assert [item["status"] for item in report["requirements"]] == [
+        "matched",
         "partial",
-        "contradicted",
         "not_stated",
     ]
     assert report["requirements"][1]["resume_evidence"] == "Vue 3"
     assert len(report["strengths"]) == 1
-    assert len(report["questions"]) == 3
+    assert not report["questions"]
     assert report["preliminary"] is True
 
 

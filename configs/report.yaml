@@ -1,0 +1,12 @@
+# Conservative evidence comparison; all values can be overridden via Hydra.
+max_questions: 5
+skill_aliases:
+  vue.js: vue
+  vue 3: vue
+  vue3: vue
+  tailwind css: tailwind
+  tailwindcss: tailwind
+related_skill_aliases:
+  html5: html
+  css3: css
+  javascript (es6+): javascript

@@ -44,7 +44,28 @@ process.stdout.write(ui.reportHtml(report));
     ).stdout
     assert "Предварительный" in output
     assert "&lt;script&gt;" in output and "<script>" not in output
-    assert "Противоречие" in output and "Не указано" in output
+    assert "Противоречие" in output and "Не подтверждено" in output
     assert "Не работал" in output and "Требуется Vue" in output
     assert "Фрагмент документа" in output
     assert "Какой опыт?" in output
+
+
+def test_report_renders_all_evidence_and_hides_technical_metadata():
+    script = """
+const ui = require('./vrscore/web/demo/journey.js');
+const report = {requirements:[{requirement:'Python',status:'partial',
+ vacancy_evidence:'Нужен Python',resume_evidence:'Изучал Python',
+ vacancy_sources:[{evidence:'Нужен Python',document_id:'document-123'},
+                  {evidence:'Работа с Python'}],
+ resume_sources:[{evidence:'Изучал Python'}, {evidence:'Коммерческого опыта нет'}]}],
+ strengths:[], risks:[], unconfirmed:[{requirement:'Figma'}], questions:[]};
+process.stdout.write(ui.reportHtml(report));
+"""
+    output = subprocess.run(
+        ["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    assert "Работа с Python" in output and "Коммерческого опыта нет" in output
+    assert "Не подтверждено" in output and "Figma" in output
+    assert "<summary>Технические данные источника</summary>" in output
+    assert "document-123" in output
+    assert "Не найдено в документе" not in output

@@ -2,6 +2,7 @@ defaults:
   - llm@llm
   - feature_extraction@feature_extraction
   - first_gate@first_gate
+  - report@report
   - _self_
 
 llm:
