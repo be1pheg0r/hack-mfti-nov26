@@ -3,6 +3,7 @@ dataset_dir: .data/trudvsem_mini
 discovery_root: .data
 extra_datasets:
   medium: .data/trudvsem_medium
+  mfti_matching_gt: public_data/mfti_matching_gt
 assets_dir: vrscore/web/dataset_viewer
 server:
   host: 127.0.0.1

@@ -12,7 +12,7 @@ server:
   public_origin: ''
   cache_dir: .data/mfti_demo/demo_cache
   extra_vacancies_path: .data/mfti_demo/vacancies.json
-  matching_gt_path: .data/mfti_matching_gt
+  matching_gt_path: public_data/mfti_matching_gt
   real_resumes_enabled: false
   real_resumes_path: .data/mfti_real_work
 auth:

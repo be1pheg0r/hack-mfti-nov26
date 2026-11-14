@@ -1,7 +1,7 @@
 # Fixed experiment identity; override fields with Hydra CLI key=value syntax.
 run_name: exact-skills-mfti-gt-v1
 output_dir: .experiments/exact-skills-mfti-gt-v1
-gt_dir: .data/mfti_matching_gt
+gt_dir: public_data/mfti_matching_gt
 cutoffs: [1, 2, 3, 4, 5]
 run_gate: true
 gate_unknown_policy: include

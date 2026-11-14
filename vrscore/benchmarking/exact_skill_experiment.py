@@ -175,7 +175,7 @@ def run_experiment(config: dict[str, Any] | DictConfig) -> dict[str, Any]:
         if isinstance(config, DictConfig)
         else dict(config)
     )
-    gt_dir = Path(settings.get("gt_dir", ".data/mfti_matching_gt")).resolve()
+    gt_dir = Path(settings.get("gt_dir", "public_data/mfti_matching_gt")).resolve()
     manifest, data = _validate_dataset(gt_dir)
     resumes = data["resumes.jsonl"]
     vacancies = data["vacancies.jsonl"]

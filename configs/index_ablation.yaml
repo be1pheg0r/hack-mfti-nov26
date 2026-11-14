@@ -1,7 +1,7 @@
-# Synthetic validation can override gt_dir; real-GT runs are intentionally opt-in.
+# Synthetic validation can override the AI-annotated reference dataset directory.
 run_name: skill-index-ablation-v1
 output_dir: .experiments/skill-index-ablation-v1
-gt_dir: .data/mfti_matching_gt
+gt_dir: public_data/mfti_matching_gt
 cutoffs: [1, 2, 3, 4, 5]
 indexes:
   - name: exact

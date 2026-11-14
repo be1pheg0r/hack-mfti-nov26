@@ -1,0 +1,88 @@
+{
+  "name": "МФТИ · реальные резюме · ИИ-разметка",
+  "version": "0.2.1",
+  "actual": {
+    "resumes": 10,
+    "vacancies": 20,
+    "pairs": 200,
+    "requirements": 104
+  },
+  "labels": {
+    "pair_relevance": "ИИ-разметка, не проверена человеком",
+    "requirement_statuses": "Частично: только топ-3 вакансии каждого резюме",
+    "llm_extraction": "Предсказания LLM, не эталонная разметка"
+  },
+  "provenance": {
+    "original_publisher": "Исходный кейс; обработанная сторонняя копия открытых данных Работа России; вакансии МФТИ"
+  },
+  "methodology": {
+    "annotation": "Одна ИИ-оценка на пару, без экспертной проверки",
+    "ranking_ties": "Порядок внутри одной оценки условный",
+    "privacy": "Частный датасет; автоматическая обработка не гарантирует полной анонимности",
+    "limitations": [
+      "Резюме из Работа России — обработанные поля, а не полные оригиналы.",
+      "Разметка ИИ не является экспертным ground truth.",
+      "Требования и сущности размечены частично."
+    ]
+  },
+  "sha256": {
+    "resumes.jsonl": "c20a917214c3aa2fefa22e572b3fad1ebf6f8d76e9f9a53103b4066f78cd4cb4",
+    "vacancies.jsonl": "b0ce9c7603227c076d34acac2af0123632e08a689a1b81908c7abb180853fb31",
+    "pairs.jsonl": "125790f6f82ec84dde83e80d84a155f7ddd4a484973fa20c26de6b0aa976039e",
+    "requirements.jsonl": "b5eb9bc1951dada220687853a56b3ab877094edd57e3bdfa356eb3685734ad54",
+    "llm_extractions.jsonl": "68b242fa7184bb6f8e0062f48dcfce3e679733179b74fed0867df064cb9a9d15"
+  },
+  "llm_extraction": {
+    "coverage": {
+      "resumes": 10,
+      "vacancies": 20
+    },
+    "skill_categories": [
+      "hard_skill",
+      "soft_skill",
+      "language",
+      "language_level"
+    ],
+    "model_predictions": true,
+    "generation": "Existing matching cached results; no new model calls",
+    "counts_by_category": {
+      "resume_certification": 2,
+      "resume_documents": 10,
+      "resume_education": 10,
+      "resume_education_specialization": 5,
+      "resume_employment_type": 6,
+      "resume_experience": 10,
+      "resume_hard_skill": 160,
+      "resume_language": 5,
+      "resume_language_level": 2,
+      "resume_location": 7,
+      "resume_mobility": 7,
+      "resume_other": 8,
+      "resume_position_name": 17,
+      "resume_salary_min": 8,
+      "resume_soft_skill": 47,
+      "resume_typical_position": 4,
+      "resume_work_format": 6,
+      "resume_work_schedule": 6,
+      "vacancy_certification": 3,
+      "vacancy_documents": 20,
+      "vacancy_education": 17,
+      "vacancy_education_specialization": 23,
+      "vacancy_employment_type": 7,
+      "vacancy_experience": 26,
+      "vacancy_hard_skill": 309,
+      "vacancy_language": 6,
+      "vacancy_language_level": 1,
+      "vacancy_location": 16,
+      "vacancy_mobility": 1,
+      "vacancy_other": 32,
+      "vacancy_position_name": 20,
+      "vacancy_salary_max": 3,
+      "vacancy_salary_min": 3,
+      "vacancy_soft_skill": 51,
+      "vacancy_typical_position": 12,
+      "vacancy_work_format": 10,
+      "vacancy_work_schedule": 16
+    }
+  }
+}

@@ -1,0 +1,22 @@
+# Local benchmark; external LLM requests receive only hash-approved public cases and synthetic resumes.
+defaults:
+  - override hydra/job_logging: disabled
+  - _self_
+iterations: 10
+max_tokens: 16384
+timeout_seconds: 300
+llm_config: configs/llm.yaml
+embedding_url: http://127.0.0.1:18767
+embedding_dimension: 128
+expected_embedding_revision: f9972ac22e696a105c482202646979e33e4b5a1e
+milvus_uri: http://127.0.0.1:19530
+milvus_token_file: .data/milvus/token
+collection_prefix: indexing_benchmark_
+gt_dir: public_data/mfti_matching_gt
+output_dir: .experiments/indexing-benchmark-run
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false
