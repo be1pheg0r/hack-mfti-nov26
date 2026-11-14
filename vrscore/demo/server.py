@@ -21,6 +21,8 @@ from vrscore.llm import LLMConfig, OpenRouterClient
 ASSETS = Path(__file__).resolve().parents[1] / "web" / "demo"
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/2": ("index.html", "text/html; charset=utf-8"),
+    "/marker2.css": ("marker2.css", "text/css; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/fight.css": ("fight.css", "text/css; charset=utf-8"),
     "/fsm.css": ("fsm.css", "text/css; charset=utf-8"),
@@ -31,6 +33,24 @@ FILES = {
     "/journey.js": ("journey.js", "text/javascript; charset=utf-8"),
     "/funnel.webp": ("funnel.webp", "image/webp"),
 }
+
+
+def _static_asset(path, name):
+    """Serve the alternate visual treatment without duplicating the demo UI."""
+    body = (ASSETS / name).read_bytes()
+    if path == "/2":
+        body = body.replace(
+            b"</head>",
+            b'<link href="https://fonts.googleapis.com/css2?family=Golos+Text:'
+            b'wght@400;500;600;700;800&family=PT+Mono&display=swap" '
+            b'rel="stylesheet"><link rel="stylesheet" href="/marker2.css"></head>',
+        ).replace(b'<a class="logo" href="/"', b'<a class="logo" href="/2"')
+        body = body.replace(
+            '<img src="/logo.png" alt="Сводка">'.encode(),
+            '<span class="marker-logo" aria-hidden="true"></span>'
+            '<span class="marker-word">СВОДКА</span>'.encode(),
+        )
+    return body
 
 
 class ThreadingHTTPServer(BaseThreadingHTTPServer):
@@ -93,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path in FILES:
             name, content_type = FILES[path]
-            return self.respond(200, (ASSETS / name).read_bytes(), content_type)
+            return self.respond(200, _static_asset(path, name), content_type)
         if path == "/api/demo":
             if not self.authenticated():
                 return self.respond(401, {"error": "Требуется токен"})
@@ -284,7 +304,7 @@ class DemoASGI:
         if method == "GET" and path in FILES:
             name, content_type = FILES[path]
             try:
-                body = (ASSETS / name).read_bytes()
+                body = _static_asset(path, name)
             except OSError:
                 return response(404, {"error": "Not found"})
             return response(200, body, content_type)

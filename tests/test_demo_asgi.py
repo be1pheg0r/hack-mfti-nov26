@@ -76,6 +76,23 @@ def test_asgi_auth_host_origin_headers_and_existing_routes():
     assert status == 403
 
 
+def test_second_design_has_isolated_assets_and_preserves_api_security():
+    app = DemoASGI(Service(), token="secret", port=18765)
+    headers = {"host": "127.0.0.1:18765"}
+    status, _, original = asyncio.run(request(app, "GET", "/", headers))
+    assert status == 200 and b"/marker2.css" not in original
+    status, _, variant = asyncio.run(request(app, "GET", "/2", headers))
+    assert status == 200 and b"/marker2.css" in variant
+    assert b'href="/2"' in variant and b"/journey.js" in variant
+    status, content_headers, css = asyncio.run(
+        request(app, "GET", "/marker2.css", headers)
+    )
+    assert status == 200 and b"text/css" in content_headers[b"content-type"]
+    assert css
+    status, _, _ = asyncio.run(request(app, "GET", "/api/demo", headers))
+    assert status == 401
+
+
 def test_asgi_pipeline_validates_body_and_authenticates():
     app = DemoASGI(Service(), token="secret", port=18765)
     headers = {"host": "127.0.0.1:18765", "content-type": "application/json"}
