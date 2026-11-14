@@ -3,7 +3,10 @@
 import hashlib
 import json
 import logging
+import math
+import random
 import re
+import time
 from pathlib import Path
 from threading import Lock
 
@@ -11,9 +14,11 @@ from omegaconf import OmegaConf
 
 from vrscore.documents.dataset import from_dataset_record
 from vrscore.documents.docx import DocxReader
+from vrscore.embedding_client import EmbeddingClient
 from vrscore.feature_extraction.vacancy import FeatureVocabulary
 from vrscore.gates import apply_vacancy_defaults, evaluate_first_gate
 from vrscore.llm import ExtractionPrompts
+from vrscore.retrieval_pipeline import RetrievalPipeline
 
 from .extraction import (
     Entity,
@@ -307,9 +312,31 @@ class DemoService:
         extra_vacancies_path=None,
         matching_gt_path=None,
         real_resumes_path=None,
+        embedding_url="http://127.0.0.1:18766",
+        embedding_timeout=120,
+        shortlist_size=10,
+        demo_delay_seconds=0.2,
     ):
         self.provider = provider
         self.gate_config = gate_config
+        if (
+            isinstance(shortlist_size, bool)
+            or not isinstance(shortlist_size, int)
+            or shortlist_size < 1
+        ):
+            raise ValueError("shortlist_size must be a positive integer")
+        if (
+            isinstance(demo_delay_seconds, bool)
+            or not isinstance(demo_delay_seconds, (int, float))
+            or not math.isfinite(demo_delay_seconds)
+            or demo_delay_seconds < 0
+        ):
+            raise ValueError("demo_delay_seconds must be non-negative")
+        self.embedding_encoder = EmbeddingClient(
+            embedding_url, timeout=embedding_timeout
+        )
+        self.shortlist_size = shortlist_size
+        self.demo_delay_seconds = demo_delay_seconds
         self.real_resumes_path = Path(real_resumes_path) if real_resumes_path else None
         project = Path(__file__).resolve().parents[2]
         if prompts is None:
@@ -384,6 +411,10 @@ class DemoService:
         self.cache = dict(self.parsed)
         self.vacancy_failures = set()
         self.lock = Lock()
+        self.pipeline_cache = {}
+        self.pipeline_cache_dir = (
+            self.cache_dir / "pipeline" if self.cache_dir else None
+        )
 
     @staticmethod
     def _load_matching_reference(directory):
@@ -769,6 +800,183 @@ class DemoService:
                 for vacancy in self.extra_vacancies
             )
             return {"resume_id": resume_id, "vacancies": vacancies}
+
+    def pipeline(self, resume_id):
+        """Run and cache gate, BM25 shortlist, and local embedding reranking."""
+        if resume_id not in {resume["id"] for resume in self.resumes}:
+            raise ValueError("Unknown resume")
+        with self.lock:
+            resume = next(item for item in self.resumes if item["id"] == resume_id)
+            if resume_id.startswith("real_r") and (
+                self.cache.get(resume_id, {}).get("cache_key")
+                != self.cache_key(resume, "resume")
+            ):
+                raise ValueError("No matching cached extraction for private resume")
+            resume_features = self._cached_extraction(resume, "resume")
+            all_vacancies = [*self.vacancies, *self.extra_vacancies]
+            random.SystemRandom().shuffle(all_vacancies)
+            vacancy_documents = []
+            for vacancy in all_vacancies:
+                features = (
+                    vacancy
+                    if vacancy in self.extra_vacancies
+                    else self._available_vacancy(vacancy)
+                )
+                vacancy_documents.append(
+                    {
+                        **vacancy,
+                        **features,
+                        "kind": "vacancy",
+                        "id": vacancy["id"],
+                        "text": vacancy["text"],
+                    }
+                )
+            fingerprint = getattr(self.embedding_encoder, "cache_fingerprint", None)
+            if callable(fingerprint):
+                fingerprint = fingerprint()
+            cacheable_fingerprint = (
+                isinstance(fingerprint, dict)
+                and {"encoder", "prompt", "revision", "dimension"} <= fingerprint.keys()
+            )
+            cache_key = None
+            if cacheable_fingerprint:
+                identity = {
+                    "version": 2,
+                    "resume": self.cache_key(resume, "resume"),
+                    "vacancies": sorted(
+                        (
+                            item["id"],
+                            self.cache_key(item, "vacancy")
+                            if item["id"] in {v["id"] for v in self.vacancies}
+                            else hashlib.sha256(
+                                json.dumps(
+                                    {
+                                        key: item.get(key)
+                                        for key in item
+                                        if key not in {"warnings"}
+                                    },
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    allow_nan=False,
+                                ).encode()
+                            ).hexdigest(),
+                        )
+                        for item in vacancy_documents
+                    ),
+                    "gate_config": self.gate_config,
+                    "shortlist_size": self.shortlist_size,
+                    "include_unknown": True,
+                    "embedding_fingerprint": fingerprint,
+                }
+                serialized = json.dumps(
+                    identity, ensure_ascii=False, sort_keys=True, allow_nan=False
+                )
+                cache_key = hashlib.sha256(serialized.encode()).hexdigest()
+            cacheable = cache_key is not None and not any(
+                item.get("extraction_error") for item in vacancy_documents
+            )
+            if cacheable:
+                cached = self.pipeline_cache.get(cache_key)
+                cache_path = (
+                    self.pipeline_cache_dir / f"{cache_key}.json"
+                    if self.pipeline_cache_dir
+                    else None
+                )
+                if cached is None and cache_path and cache_path.is_file():
+                    try:
+                        stored = json.loads(cache_path.read_text(encoding="utf-8"))
+                        if stored.get("cache_key") == cache_key:
+                            cached = stored.get("response")
+                    except (OSError, json.JSONDecodeError, AttributeError):
+                        cached = None
+                if cached is not None:
+                    self.pipeline_cache[cache_key] = cached
+                    if self.demo_delay_seconds:
+                        time.sleep(self.demo_delay_seconds)
+                    return cached
+            resume_document = {
+                **resume,
+                **resume_features,
+                "kind": "resume",
+                "id": resume_id,
+                "text": resume["text"],
+            }
+            result = RetrievalPipeline(
+                [
+                    item
+                    for item in vacancy_documents
+                    if not item.get("extraction_error")
+                ],
+                self.embedding_encoder,
+                shortlist_size=self.shortlist_size,
+                gate_config=self.gate_config,
+                include_unknown=True,
+            ).search(resume_document)
+            gates = result["gates"]
+            for item in vacancy_documents:
+                if item.get("extraction_error"):
+                    gates[item["id"]] = {
+                        "status": "unknown",
+                        "decisions": [
+                            {
+                                "filter": "extraction",
+                                "status": "unknown",
+                                "explanation": (
+                                    "Vacancy extraction failed; "
+                                    "gate outcome is unknown."
+                                ),
+                            }
+                        ],
+                    }
+            initial = [item["id"] for item in vacancy_documents]
+            gate = {
+                "passed": [
+                    identifier
+                    for identifier in initial
+                    if gates[identifier]["status"] == "pass"
+                ],
+                "rejected": [
+                    identifier
+                    for identifier in initial
+                    if gates[identifier]["status"] == "fail"
+                ],
+                "unknown": [
+                    identifier
+                    for identifier in initial
+                    if gates[identifier]["status"] == "unknown"
+                ],
+                "decisions": gates,
+            }
+            response = {
+                "resume_id": resume_id,
+                "initial": initial,
+                "gate": gate,
+                "bm25": [
+                    {"vacancy_id": item["id"], "score": item["score"]}
+                    for item in result["lexical_ranking"][: self.shortlist_size]
+                ],
+                "ranked": [
+                    {"vacancy_id": item["id"], "score": item["embedding_score"]}
+                    for item in result["results"]
+                ],
+                "shortlist_size": self.shortlist_size,
+            }
+            if cacheable:
+                self.pipeline_cache[cache_key] = response
+                if self.pipeline_cache_dir:
+                    self.pipeline_cache_dir.mkdir(parents=True, exist_ok=True)
+                    cache_path = self.pipeline_cache_dir / f"{cache_key}.json"
+                    temporary = cache_path.with_suffix(".json.tmp")
+                    temporary.write_text(
+                        json.dumps(
+                            {"cache_key": cache_key, "response": response},
+                            ensure_ascii=False,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    temporary.replace(cache_path)
+            return response
 
     def analyze(self, vacancy_id, resume_id=None):
         """Reuse results for unchanged documents and extraction configuration."""

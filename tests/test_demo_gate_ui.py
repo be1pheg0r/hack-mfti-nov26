@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_MODULE = ROOT / "vrscore/web/demo/app.js"
 
 
-def test_analyze_button_keeps_original_label_and_gate_remains_available():
+def test_analyze_button_starts_the_unified_pipeline():
     from html.parser import HTMLParser
 
     class ButtonParser(HTMLParser):
@@ -31,8 +31,8 @@ def test_analyze_button_keeps_original_label_and_gate_remains_available():
 
     parser = ButtonParser()
     parser.feed((ROOT / "vrscore/web/demo/index.html").read_text(encoding="utf-8"))
-    assert parser.labels["analyze"].strip() == "АНАЛИЗ"
-    assert "GATE 1" in parser.labels["run-gate"]
+    assert parser.labels["analyze"].strip().startswith("АНАЛИЗ")
+    assert "ДАЛЬШЕ" in parser.labels["next"]
 
 
 def run_gate_ui(payload):
