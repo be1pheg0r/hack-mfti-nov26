@@ -1,0 +1,18 @@
+resume: ???
+vacancies: ???
+server: http://127.0.0.1:18766
+timeout_seconds: 300
+shortlist_size: 10
+document_batch_size: 8
+document_cache_collection: null
+milvus_uri: http://127.0.0.1:19530
+milvus_token_file: .data/milvus/token
+include_unknown: true
+gate_config: null
+bm25_config: null
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

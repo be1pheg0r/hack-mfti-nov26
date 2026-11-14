@@ -1,9 +1,12 @@
 # The caller supplies ready vectors; this command never embeds or parses data.
-backend: sqlite_vec
+backend: milvus
+uri: http://127.0.0.1:19530
+collection_name: vectors
+token_file: .data/milvus/token
 operation: search
 record_id: ""
+record_ids: null
 vector: []
-database_path: .data/vector_store/vectors.sqlite3
 dimension: 384
 limit: 5
 hydra:

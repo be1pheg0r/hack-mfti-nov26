@@ -1,0 +1,13 @@
+gt_dir: .data/mfti_matching_gt
+output_dir: .experiments/embeddinggemma-ablation-20261114
+server: http://127.0.0.1:18766
+timeout_seconds: 300
+shortlist_sizes: [5, 10, 20]
+cutoffs: [1, 2, 3, 4, 5]
+gate_modes: [true, false]
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

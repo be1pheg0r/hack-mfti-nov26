@@ -1,0 +1,15 @@
+# EXPERIMENTAL / BLOCKED: this stack does not load the pinned EmbeddingGemma 2.
+# transformers 5.5.4 lacks model support; 5.23.0 + optimum-intel 2.2.0
+# fails to import VisionRotaryEmbedding. Do not use for production inference.
+# Overlay for the repository's existing CPU PyTorch/Transformers environment.
+# Install into a dedicated worker venv, then expose the repository venv's
+# site-packages read-only via PYTHONPATH. Avoid pulling a second CUDA Torch.
+# Use: uv pip install --no-deps --python <worker-venv>/bin/python -r requirements-openvino.txt
+# This manifest intentionally pins the exporter/runtime stack, not the base model deps.
+transformers==5.5.4
+tokenizers==0.22.2
+huggingface-hub==1.21.0
+optimum-intel[openvino]==2.2.0
+openvino==2026.4.1
+openvino-tokenizers==2026.4.1.0
+nncf==3.4.0
