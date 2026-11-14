@@ -636,18 +636,7 @@ class DemoService:
         if kind not in {"vacancy", "resume"}:
             raise ValueError("Unknown document kind")
         if kind == "resume" and document["id"].startswith("real_r"):
-            filename = document["id"] + ".json"
-            if (
-                self.real_resumes_path is None
-                or filename not in APPROVED_REAL_RESUME_HASHES
-            ):
-                raise ValueError("Private resume is not approved")
-            raw = (self.real_resumes_path / filename).read_bytes()
-            if (
-                hashlib.sha256(raw).hexdigest() != APPROVED_REAL_RESUME_HASHES[filename]
-                or json.loads(raw).get("text") != document["text"]
-            ):
-                raise ValueError("Private resume differs from approved input")
+            raise ValueError("private resume is not approved for external extraction")
         prompt = getattr(self.prompts, kind)
         model = self.vacancy_model if kind == "vacancy" else self.output_model
         result = self.provider.structured(

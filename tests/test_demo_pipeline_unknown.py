@@ -53,3 +53,25 @@ def test_uncached_private_resume_is_not_sent_to_external_provider(monkeypatch):
     monkeypatch.setattr(service, "_cached_extraction", forbidden)
     with pytest.raises(ValueError, match="private resume"):
         service.pipeline("real_r5")
+
+
+def test_direct_private_extraction_is_never_sent_to_external_provider(
+    tmp_path, monkeypatch
+):
+    import hashlib
+    import json
+
+    service = DemoService(None, demo_delay_seconds=0)
+    resume = dict(service.resumes[0], id="real_r5")
+    raw = json.dumps({"text": resume["text"]}).encode()
+    (tmp_path / "real_r5.json").write_bytes(raw)
+    service.real_resumes_path = tmp_path
+    monkeypatch.setitem(
+        __import__(
+            "vrscore.demo.service", fromlist=["APPROVED_REAL_RESUME_HASHES"]
+        ).APPROVED_REAL_RESUME_HASHES,
+        "real_r5.json",
+        hashlib.sha256(raw).hexdigest(),
+    )
+    with pytest.raises(ValueError, match="private resume"):
+        service.extract_document(resume, kind="resume")
