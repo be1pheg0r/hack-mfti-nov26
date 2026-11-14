@@ -1,4 +1,39 @@
 /* A short animated stroke makes the rejection visible without hiding its label. */
+/* Grid's default auto-sized row expands to fit long documents, even when the
+   container itself is capped. Constrain the track, not just its container. */
+@media (min-width:851px) {
+  .choose-grid, .journey-grid {
+    flex:none;
+    height:max(360px, calc(100dvh - 300px));
+    max-height:none;
+    grid-template-rows:minmax(0, 1fr);
+  }
+  .choose-grid > *, .journey-grid > * {min-width:0;min-height:0}
+}
+html {scroll-behavior:auto}
+.workspace {scroll-margin-top:64px}
+.choose-grid > *, .journey-grid > * {min-width:0}
+.resume-choice {grid-template-columns:28px minmax(0,1fr) auto}
+.resume-choice > span, .document-body, .position, #subtitle,
+.stage-bottom, .stages li, .explain-copy {min-width:0;overflow-wrap:anywhere}
+@media (min-width:561px) and (max-width:850px) {
+  .choose-grid, .journey-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (min-width:851px) and (max-height:700px) {
+  .stages {padding:4px 12px}
+  .stages li {padding:5px 4px}
+  .stage-bottom {padding:10px 14px}
+  .stage-bottom p {min-height:0;margin-bottom:8px}
+  .stage-bottom .action {padding:11px 14px}
+  .stage-bottom .text-button {margin-top:2px;padding:8px 0}
+  .funnel-illustration {min-height:0}
+}
+@media (max-width:560px) {
+  .stages {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;padding:5px 12px}
+  .stages li {grid-template-columns:24px minmax(0,1fr) auto;gap:5px;padding:7px 2px}
+  .stage-bottom {padding:10px 12px}
+  .stage-bottom p {min-height:0;margin-bottom:10px}
+}
 .job-row.removed .job-name {position:relative;text-decoration:none}
 .job-row.removed .job-name::after {content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:var(--red);transform-origin:left;animation:strike .45s .12s ease-out both}
 .job-row:nth-child(2n) {animation-delay:.04s}
