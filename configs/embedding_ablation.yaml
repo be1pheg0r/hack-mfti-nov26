@@ -1,4 +1,4 @@
-gt_dir: .data/mfti_matching_gt
+gt_dir: public_data/mfti_matching_gt
 output_dir: .experiments/embeddinggemma-ablation-20261114
 server: http://127.0.0.1:18766
 timeout_seconds: 300

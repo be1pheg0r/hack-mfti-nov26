@@ -1,6 +1,6 @@
 # This local experiment changes only the source of BM25Plus token IDF.
 corpus_dir: .data/trudvsem_medium
-gt_dir: .data/mfti_matching_gt
+gt_dir: public_data/mfti_matching_gt
 output_dir: .experiments/resume-vocabulary-ablation
 cutoffs: [1, 2, 3, 4, 5]
 exclude_gt_exact_hashes: false
