@@ -1,0 +1,67 @@
+# Linux host networking preserves the application's loopback-only security boundary.
+# The existing Milvus deployment supplies etcd, MinIO, authentication and storage.
+include:
+  - path:
+      - deploy/milvus/compose.yaml
+      - deploy/milvus/loopback.yaml
+
+services:
+  demo:
+    build:
+      context: .
+      target: demo
+    init: true
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      VRSCORE_DEMO_TOKEN: ${VRSCORE_DEMO_TOKEN:?Set VRSCORE_DEMO_TOKEN (at least 24 characters)}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY}
+    command:
+      - python
+      - -m
+      - vrscore.demo
+      - server.reload=false
+      - server.port=${VRSCORE_DEMO_PORT:-18765}
+      - server.extra_vacancies_path=${VRSCORE_EXTRA_VACANCIES_PATH:-null}
+      - pipeline.embedding_url=http://127.0.0.1:${VRSCORE_EMBEDDING_PORT:-18766}
+    volumes:
+      - type: bind
+        source: ./public_data
+        target: /app/public_data
+        read_only: true
+      - demo-data:/app/.data
+    healthcheck:
+      test: [CMD-SHELL, 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:${VRSCORE_DEMO_PORT:-18765}/\", timeout=3)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  embedding:
+    build:
+      context: .
+      target: embeddings
+    init: true
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    command:
+      - python
+      - -m
+      - vrscore.embedding_server
+      - port=${VRSCORE_EMBEDDING_PORT:-18766}
+    volumes:
+      - model-cache:/home/app/.cache/huggingface
+      - embedding-data:/app/.data
+    healthcheck:
+      test: [CMD-SHELL, 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:${VRSCORE_EMBEDDING_PORT:-18766}/health\", timeout=3)"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10m
+
+volumes:
+  demo-data:
+  embedding-data:
+  model-cache:

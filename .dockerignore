@@ -1,0 +1,10 @@
+# Never include credentials, private working data, datasets or local environments.
+**
+!pyproject.toml
+!uv.lock
+!configs/
+!configs/**
+!vrscore/
+!vrscore/**
+vrscore/**/__pycache__/
+vrscore/**/*.pyc

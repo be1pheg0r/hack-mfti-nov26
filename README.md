@@ -89,6 +89,17 @@ uv run python -m vrscore.embedding_server
 uv run python -m vrscore.demo
 ```
 
+### Docker Compose
+
+На Linux установите Docker с Compose и подготовьте файлы Milvus `.data/milvus/minio.env` и `.data/milvus/user.yaml`. Затем заполните токен демо (не менее 24 символов), ключ OpenRouter и при необходимости `HF_TOKEN` в файле `.env.docker`:
+
+```bash
+cp .env.example .env.docker
+docker compose --env-file .env.docker up -d --build
+```
+
+Демо доступно на `http://127.0.0.1:18765`. Модель и кэш сохраняются в Docker volumes; дополнительные вакансии по умолчанию отключены. Данные `public_data/` монтируются только для чтения и не входят в образы.
+
 <details>
 <summary><b>Бенчмарк индексации: дополнительные условия</b></summary>
 <br>
