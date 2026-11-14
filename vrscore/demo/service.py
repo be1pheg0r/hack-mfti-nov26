@@ -28,6 +28,7 @@ from .extraction import (
     valid_entity,
 )
 from .postprocessing import apply_rules
+from .report import build_report
 
 CASE_FILES = (
     ("frontend", "Вакансия 1.docx"),
@@ -789,6 +790,26 @@ class DemoService:
                 for vacancy in self.extra_vacancies
             )
             return {"resume_id": resume_id, "vacancies": vacancies}
+
+    def report(self, resume_id):
+        """Produce preliminary reports for all vacancies, independent of ranking."""
+        resume = next((item for item in self.resumes if item["id"] == resume_id), None)
+        if resume is None:
+            raise ValueError("Unknown resume")
+        with self.lock:
+            features = self._cached_extraction(resume, "resume")
+            reports = []
+            for vacancy in [*self.vacancies, *self.extra_vacancies]:
+                extracted = (
+                    vacancy
+                    if vacancy in self.extra_vacancies
+                    else self._available_vacancy(vacancy)
+                )
+                report = build_report({**extracted, "id": vacancy["id"]}, features)
+                report["title"] = vacancy["title"]
+                report["extraction_error"] = bool(extracted.get("extraction_error"))
+                reports.append(report)
+            return {"resume_id": resume_id, "vacancies": reports}
 
     def pipeline(self, resume_id):
         """Run and cache gate, BM25 shortlist, and local embedding reranking."""

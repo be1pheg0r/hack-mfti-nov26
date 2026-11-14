@@ -115,6 +115,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/demo/analyze",
             "/api/demo/gate",
             "/api/demo/pipeline",
+            "/api/demo/report",
         }:
             return self.respond(404, {"error": "Not found"})
         if not self.authenticated():
@@ -126,7 +127,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 4096:
                 raise ValueError("Invalid body size")
             data = json.loads(self.rfile.read(length))
-            if path in {"/api/demo/gate", "/api/demo/pipeline"}:
+            if path in {"/api/demo/gate", "/api/demo/pipeline", "/api/demo/report"}:
                 if (
                     not isinstance(data, dict)
                     or not isinstance(data.get("resume_id"), str)
@@ -154,6 +155,8 @@ class Handler(BaseHTTPRequestHandler):
             result = (
                 self.service.gate(resume_id)
                 if path == "/api/demo/gate"
+                else self.service.report(resume_id)
+                if path == "/api/demo/report"
                 else self.service.pipeline(resume_id)
                 if path == "/api/demo/pipeline"
                 else self.service.analyze(data["vacancy_id"], resume_id=resume_id)
@@ -295,7 +298,12 @@ class DemoASGI:
                     "Demo catalog extraction failed (%s)", type(error).__name__
                 )
                 return response(502, {"error": "Не удалось обработать вакансии."})
-        routes = {"/api/demo/analyze", "/api/demo/gate", "/api/demo/pipeline"}
+        routes = {
+            "/api/demo/analyze",
+            "/api/demo/gate",
+            "/api/demo/pipeline",
+            "/api/demo/report",
+        }
         if method != "POST" or path not in routes:
             return response(404, {"error": "Not found"})
         if not self._authenticated(headers):
@@ -316,7 +324,7 @@ class DemoASGI:
             if not isinstance(data, dict):
                 raise ValueError
             resume_id = data.get("resume_id")
-            if path in {"/api/demo/gate", "/api/demo/pipeline"}:
+            if path in {"/api/demo/gate", "/api/demo/pipeline", "/api/demo/report"}:
                 if not isinstance(resume_id, str) or resume_id not in {
                     r["id"] for r in self.service.resumes
                 }:
@@ -337,6 +345,8 @@ class DemoASGI:
         try:
             if path == "/api/demo/gate":
                 result = await asyncio.to_thread(self.service.gate, resume_id)
+            elif path == "/api/demo/report":
+                result = await asyncio.to_thread(self.service.report, resume_id)
             elif path == "/api/demo/pipeline":
                 result = await asyncio.to_thread(self.service.pipeline, resume_id)
             else:

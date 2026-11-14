@@ -103,3 +103,24 @@ def test_public_origin_does_not_allow_http_downgrade():
     headers = {"host": "demo.example", "origin": "http://demo.example"}
     status, _, _ = asyncio.run(request(app, "GET", "/", headers))
     assert status == 403
+
+
+def test_report_api_is_authenticated_and_checks_resume():
+    class ReportService(Service):
+        def report(self, resume_id):
+            return {"resume_id": resume_id, "vacancies": []}
+
+    app = DemoASGI(ReportService(), token="secret", port=18765)
+    headers = {"host": "127.0.0.1:18765", "content-type": "application/json"}
+    body = b'{"resume_id":"r1"}'
+    status, _, _ = asyncio.run(request(app, "POST", "/api/demo/report", headers, body))
+    assert status == 401
+    headers["authorization"] = "Bearer secret"
+    status, _, result = asyncio.run(
+        request(app, "POST", "/api/demo/report", headers, body)
+    )
+    assert status == 200 and json.loads(result)["resume_id"] == "r1"
+    status, _, _ = asyncio.run(
+        request(app, "POST", "/api/demo/report", headers, b'{"resume_id":"bad"}')
+    )
+    assert status == 400

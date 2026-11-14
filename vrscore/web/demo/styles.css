@@ -41,3 +41,71 @@ html {scroll-behavior:auto}
 .job-row:nth-child(4n) {animation-delay:.12s}
 @keyframes strike {from {transform:scaleX(0)} to {transform:scaleX(1)}}
 @media(prefers-reduced-motion:reduce) {.job-row.removed .job-name::after {animation:none}}
+
+/* Reports are independent of ranking: even filtered vacancies remain available. */
+.job-row {width:100%;border:0;border-bottom:1px solid #d7dcd4;background:transparent;color:var(--ink);text-align:left}
+.job-row:hover {background:#edf2ea}
+.reports-open {flex:none;display:flex;justify-content:space-between;width:100%;min-height:46px;padding:12px 16px;border:0;border-top:1px solid var(--ink);background:#e1eadc;color:var(--ink);text-align:left;font-size:10px;font-weight:800;letter-spacing:.05em}
+.reports-open:hover {background:#cfdcc9}
+.reports-open span {font-size:16px;color:var(--red)}
+.report-dialog {width:min(1200px,calc(100vw - 40px));height:min(820px,calc(100dvh - 40px));max-width:none;max-height:none;padding:0;border:1px solid var(--ink);background:var(--paper);color:var(--ink);overflow:hidden}
+.report-dialog::backdrop {background:rgba(25,30,26,.7)}
+.report-shell {height:100%;min-height:0;display:flex;flex-direction:column}
+.report-header {display:flex;justify-content:space-between;align-items:start;gap:20px;flex:none;padding:19px 25px;border-bottom:1px solid var(--ink);background:#fafbf8}
+.report-header h2 {font:600 clamp(27px,3vw,38px)/1.1 Oswald,Arial,sans-serif;margin:4px 0}
+.report-header p {margin:0;color:#596159;font-size:12px}
+.report-close,.report-retry {flex:none;min-height:44px;padding:10px 14px;border:1px solid var(--ink);background:transparent;color:var(--ink);font-size:11px;font-weight:800}
+.report-close:hover,.report-retry:hover {background:#dce8df}
+.report-layout {display:grid;grid-template-columns:minmax(220px,30%) minmax(0,1fr);flex:1;min-height:0}
+.report-sidebar {min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--ink);background:#eef1eb}
+.report-vacancies {overflow:auto;min-height:0;padding:0 12px}
+.report-vacancy {display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:start;gap:9px;width:100%;min-height:52px;padding:13px 4px;border:0;border-bottom:1px solid #c9d0c6;background:transparent;color:var(--ink);text-align:left;overflow-wrap:anywhere}
+.report-vacancy:hover,.report-vacancy[aria-pressed=true] {background:#dce8df}
+.report-vacancy span {font:500 17px Oswald;color:var(--red)}
+.report-vacancy strong {font-size:12px;line-height:1.4}
+.report-content {min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:24px clamp(18px,3vw,40px) 40px}
+.report-content-head h2 {font:600 clamp(26px,3vw,40px)/1.1 Oswald,Arial,sans-serif;margin:7px 0 20px;overflow-wrap:anywhere}
+.report-body {font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.report-disclaimer,.report-warning {padding:14px 16px;background:#e0ebe0;border:1px solid #b7c8b4;margin:0 0 24px}
+.report-warning {background:#fae9e3;border-color:#d4a99d}
+.report-section {margin-top:24px}
+.report-section h3,.report-summary h3 {font:600 22px/1.2 Oswald,Arial,sans-serif;margin:0 0 12px}
+.report-section-heading {display:flex;justify-content:space-between;align-items:start;border-bottom:1px solid var(--ink);margin-bottom:10px}
+.report-section-heading span {color:var(--red);font:600 22px Oswald}
+.requirement {border:1px solid #bec9bc;background:#fafbf8;margin:9px 0}
+.requirement summary {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;cursor:pointer;font-weight:800;list-style:none}
+.requirement summary::-webkit-details-marker {display:none}
+.requirement summary>span:first-child {min-width:0;overflow-wrap:anywhere}
+.requirement summary small {display:block;color:#586458;font-size:10px;font-weight:600}
+.report-status {flex:none;padding:5px 8px;border:1px solid currentColor;font-size:10px;line-height:1.3;text-align:center}
+.report-status.matched {color:#285f35;background:#e4f0e0}
+.report-status.partial {color:#725005;background:#fcf2d4}
+.report-status.contradicted {color:#92291c;background:#fae5e0}
+.report-status.unknown {color:#405263;background:#e9eef1}
+.requirement-body {padding:0 14px 14px}.requirement-body>p {margin:0 0 12px;color:#536052}
+.report-quotes {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.report-quote {min-width:0;background:#eef2eb;padding:12px}
+.report-quote strong {font-size:10px;letter-spacing:.03em}
+.report-quote blockquote {margin:8px 0 0;font-size:13px;white-space:pre-wrap}
+.report-quote small {display:block;color:#596558;font-size:10px;overflow-wrap:anywhere;margin-top:9px}
+.report-context,.report-quote.missing p {font-size:12px;color:#596558;margin:8px 0 0}
+.report-summary {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:24px}
+.report-summary section {background:#e8eee5;padding:18px}
+.report-summary ul,.report-questions ul {margin:0;padding-left:20px}
+.report-summary li,.report-questions li {margin:5px 0}
+.report-more summary {margin-top:8px;color:#824036;font-size:12px;font-weight:800;cursor:pointer}
+.report-summary p,.report-empty,.report-loading {color:#596558}
+.report-error {color:#92291c}
+@media (max-width:650px) {
+  .report-dialog {width:calc(100vw - 16px);height:calc(100dvh - 16px)}
+  .report-header {padding:12px;gap:8px}.report-header h2 {font-size:26px}
+  .report-close {padding:8px;font-size:10px}
+  .report-layout {display:flex;flex-direction:column}
+  .report-sidebar {flex:none;max-height:160px;border-right:0;border-bottom:1px solid var(--ink)}
+  .report-sidebar .panel-title {height:38px}
+  .report-vacancies {display:flex;gap:8px;padding:8px;overflow:auto}
+  .report-vacancy {flex:0 0 190px;min-height:58px;border:1px solid #c9d0c6;padding:8px}
+  .report-content {flex:1;padding:18px 14px 28px}
+  .report-quotes,.report-summary {grid-template-columns:1fr}
+  .requirement summary {align-items:flex-start;flex-wrap:wrap}
+}
